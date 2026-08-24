@@ -1,0 +1,61 @@
+metadata:
+  name: pth-facebookresearch-sam3
+  namespace: cvat
+  annotations:
+    name: Segment Anything 3
+    version: 2
+    type: interactor
+    spec:
+    min_pos_points: 0
+    min_neg_points: 0
+    startswith_box_optional: true
+    help_message: Use one optional box and up to 64 positive or negative points to segment an object with SAM3
+
+spec:
+  description: SAM3 image encoder for interactive segmentation in the CVAT browser
+  runtime: "python:3.10"
+  handler: main:handler
+  eventTimeout: 120s
+  env:
+    - name: PYTHONPATH
+      value: /opt/nuclio/sam3
+    - name: HF_HOME
+      value: /opt/nuclio/sam3/.cache/huggingface
+
+  build:
+    image: cvat.pth.facebookresearch.sam3:latest-gpu
+    baseImage: ubuntu:22.04
+
+    directives:
+      preCopy:
+        - kind: ENV
+          value: NVIDIA_VISIBLE_DEVICES=all
+        - kind: ENV
+          value: NVIDIA_DRIVER_CAPABILITIES=compute,utility
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: WORKDIR
+          value: /opt/nuclio/sam3
+        - kind: RUN
+          value: apt-get update && apt-get -y install git python3 python3-pip python-is-python3 && rm -rf /var/lib/apt/lists/*
+        - kind: RUN
+          value: pip3 install torch==2.13.0 torchvision==0.28.0 pillow git+https://github.com/facebookresearch/sam3.git@8f0b7f4d4e7eda2ed606ebde6702c93359ad01da --no-cache-dir
+
+  triggers:
+    myHttpTrigger:
+      numWorkers: 1
+      kind: http
+      workerAvailabilityTimeoutMilliseconds: 300000
+      attributes:
+        maxRequestBodySize: 33554432
+
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume

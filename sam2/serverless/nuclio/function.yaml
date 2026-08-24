@@ -18,6 +18,8 @@ spec:
   env:
     - name: HF_HUB_CACHE
       value: /opt/nuclio/huggingface/hub
+    - name: HF_HUB_OFFLINE
+      value: "1"
   build:
     image: cvat.pth.facebookresearch.sam2:latest
     baseImage: ubuntu:22.04

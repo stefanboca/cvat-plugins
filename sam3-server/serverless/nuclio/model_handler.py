@@ -61,17 +61,11 @@ class ModelHandler:
         if self.device.type == "cuda" and not self.use_bfloat16:
             vitdet.addmm_act = addmm_act_fp32
 
-        checkpoint_path = os.getenv("SAM3_CHECKPOINT")
-        if checkpoint_path and not os.path.isfile(checkpoint_path):
-            raise FileNotFoundError(
-                f"SAM3_CHECKPOINT does not exist: {checkpoint_path}"
-            )
-
         self.model = build_sam3_image_model(
             device=self.device.type,
             eval_mode=True,
-            checkpoint_path=checkpoint_path,
-            load_from_HF=checkpoint_path is None,
+            checkpoint_path=None,
+            load_from_HF=True,
             enable_segmentation=True,
             enable_inst_interactivity=False,
             compile=False,

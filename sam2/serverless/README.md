@@ -45,6 +45,9 @@ nuctl deploy --project-name cvat \
 Use a GPU UUID for a stable selection. Run `nvidia-smi -L` to get the UUID.
 The selected physical GPU is `cuda:0` inside the container.
 
+The supplied YAML sets `HF_HUB_OFFLINE=1`. This setting prevents network
+requests. If the cache is incomplete, deploy with `--env HF_HUB_OFFLINE=0`.
+
 The function calls
 `SAM2ImagePredictor.from_pretrained("facebook/sam2.1-hiera-large")`. It then
 moves the model to the selected device. The browser ONNX decoder contains

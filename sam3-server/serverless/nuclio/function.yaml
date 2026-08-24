@@ -19,6 +19,8 @@ spec:
   env:
     - name: HF_HUB_CACHE
       value: /opt/nuclio/huggingface/hub
+    - name: HF_HUB_OFFLINE
+      value: "1"
     - name: SAM3_IMAGE_CACHE_SIZE
       value: "2"
     - name: SAM3_TEXT_CACHE_SIZE

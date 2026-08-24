@@ -19,33 +19,22 @@ Use `nuclio/function.yaml` for a CPU-only system. CPU inference is slow. Set
 `CVAT_NUCLIO_DEFAULT_TIMEOUT` to 300 or more if CVAT stops the request before
 the function completes.
 
-## Get the checkpoint
+## Prepare the model cache
 
 The official SAM3 checkpoint is gated. Accept its license on Hugging Face.
+Download `facebook/sam3` to your Hugging Face hub cache. Mount the complete
+hub cache. It must include the `blobs`, `refs`, and `snapshots` directories.
 
-Use one of these methods:
-
-1. Give the function an `HF_TOKEN` when you deploy it.
-2. Put the checkpoint in the container. Set `SAM3_CHECKPOINT` to its absolute
-   path.
-
-The function downloads the checkpoint only when `SAM3_CHECKPOINT` is not set.
-
-For example, use this command to mount a checkpoint from the host and deploy
-the GPU function:
+For example:
 
 ```console
 nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu.yaml \
   --platform local \
-  --volume /absolute/host/path/checkpoints:/opt/nuclio/checkpoints \
-  --env SAM3_CHECKPOINT=/opt/nuclio/checkpoints/sam3.pt
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1
 ```
-
-Replace `/absolute/host/path/checkpoints` with the absolute path of the host
-directory that contains `sam3.pt`. `SAM3_CHECKPOINT` must contain the path in
-the container.
 
 ## Deploy the GPU function
 
@@ -55,7 +44,9 @@ Run this command from the `sam3` directory:
 nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu.yaml \
-  --platform local --env HF_TOKEN=hf_...
+  --platform local \
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1
 ```
 
 ## Deploy the CPU function
@@ -66,7 +57,9 @@ Run this command from the `sam3` directory:
 nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function.yaml \
-  --platform local --env HF_TOKEN=hf_...
+  --platform local \
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1
 ```
 
 ## Deploy the CUDA 12.6 GPU function
@@ -77,7 +70,9 @@ Run this command from the `sam3` directory:
 nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu-cu126.yaml \
-  --platform local --env HF_TOKEN=hf_...
+  --platform local \
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1
 ```
 
 ## Select a GPU
@@ -88,6 +83,10 @@ Set `NVIDIA_VISIBLE_DEVICES` during deployment. For example, add
 
 Use a GPU UUID for a stable selection. Run `nvidia-smi -L` to get the UUID.
 The selected physical GPU is `cuda:0` inside the container.
+
+The supplied YAML sets `HF_HUB_OFFLINE=1`. This setting prevents network
+requests. If the cache is incomplete, deploy with `--env HF_HUB_OFFLINE=0`
+and give the function an `HF_TOKEN`.
 
 ## Cache operation
 

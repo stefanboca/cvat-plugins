@@ -50,6 +50,9 @@ Use GPU UUIDs instead of indices if the device order can change. Run
 `nvidia-smi -L` to get the UUIDs. Each selected physical GPU is `cuda:0`
 inside its container.
 
+The supplied YAML sets `HF_HUB_OFFLINE=1`. This setting prevents network
+requests. If the cache is incomplete, deploy with `--env HF_HUB_OFFLINE=0`.
+
 The function calls
 `SAM2ImagePredictor.from_pretrained("facebook/sam2.1-hiera-large")`. It then
 moves the model to the selected device.

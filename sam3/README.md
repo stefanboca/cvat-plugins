@@ -94,6 +94,6 @@ matching CPU and GPU configurations are in `serverless/nuclio`.
 
 Read `serverless/README.md` for the deployment instructions.
 
-The official checkpoint is gated. Accept its license on Hugging Face. Give the
-function an `HF_TOKEN`, or set `SAM3_CHECKPOINT` to a checkpoint in the
+The official model is gated. Accept its license on Hugging Face. Download the
+model to a Hugging Face hub cache and mount the complete cache in the
 container.

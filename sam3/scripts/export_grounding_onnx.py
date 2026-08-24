@@ -30,17 +30,18 @@ independently.
 
 Inputs use these fixed shapes:
 
-* ``fpn_288``: float32 ``[1, 256, 288, 288]``
-* ``fpn_144``: float32 ``[1, 256, 144, 144]``
-* ``fpn_72``: float32 ``[1, 256, 72, 72]``
+* ``fpn_288``: float16 ``[1, 256, 288, 288]``
+* ``fpn_144``: float16 ``[1, 256, 144, 144]``
+* ``fpn_72``: float16 ``[1, 256, 72, 72]``
 * ``boxes`` / ``box_valid`` / ``box_labels``: ``[1, 1, 4]``, ``[1, 1]``, ``[1, 1]``
 * ``points`` / ``point_valid`` / ``point_labels``: ``[1, 64, 2]``, ``[1, 64]``, ``[1, 64]``
-* ``language_features``: float32 ``[32, 1, 256]``
+* ``language_features``: float16 ``[32, 1, 256]``
 * ``language_mask``: bool ``[1, 32]``
 
 The output is the highest-scoring candidate's raw ``[1, 1, 288, 288]`` mask
-logits. The script converts internal weights to FP16 while retaining float32
-I/O, checks the graph, and compares ONNX Runtime output with official PyTorch.
+logits. The script converts internal weights and feature inputs to FP16. It
+keeps prompt inputs and mask output in FP32. It checks the graph and compares
+the ONNX Runtime output with the official PyTorch output.
 """
 
 from __future__ import annotations
@@ -353,7 +354,10 @@ def topologically_sort_graph(graph: onnx.GraphProto) -> None:
 def reduce_to_fp16(fp32_model: Path, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     model = onnx.load(str(fp32_model), load_external_data=True)
-    model = convert_float_to_float16(model, keep_io_types=True)
+    model = convert_float_to_float16(
+        model,
+        keep_io_types=["boxes", "points", "mask_logits"],
+    )
     topologically_sort_graph(model.graph)
     onnx.save_model(model, str(output), save_as_external_data=False)
 

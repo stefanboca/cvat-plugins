@@ -1,4 +1,8 @@
-import { InferenceSession, Tensor, env } from "@modules/onnxruntime-web";
+import {
+  InferenceSession,
+  Tensor,
+  env,
+} from "@modules/onnxruntime-web/webgpu";
 
 const FPN_SHAPES = [
   [1, 256, 288, 288],
@@ -15,10 +19,14 @@ const MAX_CACHED_IMAGES = 2;
 const MAX_CACHED_TEXTS = 32;
 
 let decoder: InferenceSession | null = null;
-const imageFeatureCache = new Map<string, Float32Array[]>();
+const imageFeatureCache = new Map<string, Uint16Array[]>();
 const textFeatureCache = new Map<
   string,
-  { features: Float32Array; mask: Uint8Array }
+  { features: Uint16Array; mask: Uint8Array }
+>();
+const resizeAxisCache = new Map<
+  number,
+  { lower: Uint16Array; upper: Uint16Array; weight: Float32Array }
 >();
 
 env.wasm.wasmPaths = "/assets/";
@@ -71,34 +79,39 @@ function errorToMessage(error: unknown): string {
   return "Unknown error, please check console";
 }
 
-function decodeFloat16(blob: string, expectedLength: number): Float32Array {
+interface Uint8ArrayConstructorWithBase64 extends Uint8ArrayConstructor {
+  fromBase64?: (value: string) => Uint8Array;
+}
+
+function decodeBase64(blob: string, expectedLength: number): Uint8Array {
+  const nativeDecoder = (Uint8Array as Uint8ArrayConstructorWithBase64)
+    .fromBase64;
+  if (nativeDecoder) {
+    const result = nativeDecoder(blob);
+    if (result.length !== expectedLength) {
+      throw new Error(
+        `Unexpected SAM3 tensor size: got ${result.length} bytes, expected ${expectedLength}`,
+      );
+    }
+    return result;
+  }
+
   const binary = atob(blob);
-  if (binary.length !== expectedLength * 2) {
+  if (binary.length !== expectedLength) {
     throw new Error(
-      `Unexpected SAM3 feature size: got ${binary.length} bytes, expected ${expectedLength * 2}`,
+      `Unexpected SAM3 tensor size: got ${binary.length} bytes, expected ${expectedLength}`,
     );
   }
-
-  const result = new Float32Array(expectedLength);
-  /* eslint-disable no-bitwise */
+  const result = new Uint8Array(expectedLength);
   for (let index = 0; index < expectedLength; index++) {
-    const value =
-      binary.charCodeAt(index * 2) | (binary.charCodeAt(index * 2 + 1) << 8);
-    const sign = value & 0x8000 ? -1 : 1;
-    const exponent = (value >> 10) & 0x1f;
-    const fraction = value & 0x03ff;
-
-    if (exponent === 0) {
-      result[index] = sign * 2 ** -14 * (fraction / 1024);
-    } else if (exponent === 0x1f) {
-      result[index] = fraction ? Number.NaN : sign * Number.POSITIVE_INFINITY;
-    } else {
-      result[index] = sign * 2 ** (exponent - 15) * (1 + fraction / 1024);
-    }
+    result[index] = binary.charCodeAt(index);
   }
-  /* eslint-enable no-bitwise */
-
   return result;
+}
+
+function decodeFloat16(blob: string, expectedLength: number): Uint16Array {
+  const bytes = decodeBase64(blob, expectedLength * 2);
+  return new Uint16Array(bytes.buffer, bytes.byteOffset, expectedLength);
 }
 
 function putLRU<T>(
@@ -127,7 +140,7 @@ function getLRU<T>(cache: Map<string, T>, key: string): T | null {
 function loadImageFeatures(
   imageKey: string,
   blobs: [string, string, string] | null,
-): Float32Array[] {
+): Uint16Array[] {
   if (blobs) {
     const features = blobs.map((blob, index) => {
       const shape = FPN_SHAPES[index];
@@ -149,24 +162,14 @@ function loadImageFeatures(
 }
 
 function decodeBytes(blob: string, expectedLength: number): Uint8Array {
-  const binary = atob(blob);
-  if (binary.length !== expectedLength) {
-    throw new Error(
-      `Unexpected SAM3 byte tensor size: got ${binary.length}, expected ${expectedLength}`,
-    );
-  }
-  const result = new Uint8Array(expectedLength);
-  for (let index = 0; index < expectedLength; index++) {
-    result[index] = binary.charCodeAt(index);
-  }
-  return result;
+  return decodeBase64(blob, expectedLength);
 }
 
 function loadTextFeatures(
   textKey: string,
   featureBlob: string | null,
   maskBlob: string | null,
-): { features: Float32Array; mask: Uint8Array } {
+): { features: Uint16Array; mask: Uint8Array } {
   if ((featureBlob === null) !== (maskBlob === null)) {
     throw new Error(
       "SAM3 text feature and mask blobs must be supplied together",
@@ -191,6 +194,36 @@ function loadTextFeatures(
   return text;
 }
 
+function getResizeAxis(outputSize: number): {
+  lower: Uint16Array;
+  upper: Uint16Array;
+  weight: Float32Array;
+} {
+  const cached = resizeAxisCache.get(outputSize);
+  if (cached) {
+    return cached;
+  }
+
+  const lower = new Uint16Array(outputSize);
+  const upper = new Uint16Array(outputSize);
+  const weight = new Float32Array(outputSize);
+  for (let index = 0; index < outputSize; index++) {
+    const source = Math.max(
+      0,
+      Math.min(
+        MASK_SIZE - 1,
+        (index + 0.5) * (MASK_SIZE / outputSize) - 0.5,
+      ),
+    );
+    lower[index] = Math.floor(source);
+    upper[index] = Math.min(lower[index] + 1, MASK_SIZE - 1);
+    weight[index] = source - lower[index];
+  }
+  const axis = { lower, upper, weight };
+  resizeAxisCache.set(outputSize, axis);
+  return axis;
+}
+
 function resizeAndCropMask(
   logits: Float32Array,
   width: number,
@@ -210,37 +243,36 @@ function resizeAndCropMask(
   let ytl = height;
   let xbr = -1;
   let ybr = -1;
+  const xAxis = getResizeAxis(width);
+  const yAxis = getResizeAxis(height);
 
   for (let y = 0; y < height; y++) {
-    const sourceY = Math.max(
-      0,
-      Math.min(MASK_SIZE - 1, (y + 0.5) * (MASK_SIZE / height) - 0.5),
-    );
-    const y0 = Math.floor(sourceY);
-    const y1 = Math.min(y0 + 1, MASK_SIZE - 1);
-    const yWeight = sourceY - y0;
+    const y0 = yAxis.lower[y];
+    const y1 = yAxis.upper[y];
+    const yWeight = yAxis.weight[y];
+    const yInverseWeight = 1 - yWeight;
+    const topOffset = y0 * MASK_SIZE;
+    const bottomOffset = y1 * MASK_SIZE;
+    const outputOffset = y * width;
 
     for (let x = 0; x < width; x++) {
-      const sourceX = Math.max(
-        0,
-        Math.min(MASK_SIZE - 1, (x + 0.5) * (MASK_SIZE / width) - 0.5),
-      );
-      const x0 = Math.floor(sourceX);
-      const x1 = Math.min(x0 + 1, MASK_SIZE - 1);
-      const xWeight = sourceX - x0;
+      const x0 = xAxis.lower[x];
+      const x1 = xAxis.upper[x];
+      const xWeight = xAxis.weight[x];
+      const xInverseWeight = 1 - xWeight;
       const top =
-        logits[y0 * MASK_SIZE + x0] * (1 - xWeight) +
-        logits[y0 * MASK_SIZE + x1] * xWeight;
+        logits[topOffset + x0] * xInverseWeight +
+        logits[topOffset + x1] * xWeight;
       const bottom =
-        logits[y1 * MASK_SIZE + x0] * (1 - xWeight) +
-        logits[y1 * MASK_SIZE + x1] * xWeight;
+        logits[bottomOffset + x0] * xInverseWeight +
+        logits[bottomOffset + x1] * xWeight;
 
-      if (top * (1 - yWeight) + bottom * yWeight > 0) {
-        mask[y * width + x] = 1;
-        xtl = Math.min(xtl, x);
-        ytl = Math.min(ytl, y);
-        xbr = Math.max(xbr, x);
-        ybr = Math.max(ybr, y);
+      if (top * yInverseWeight + bottom * yWeight > 0) {
+        mask[outputOffset + x] = 1;
+        if (x < xtl) xtl = x;
+        if (y < ytl) ytl = y;
+        if (x > xbr) xbr = x;
+        if (y > ybr) ybr = y;
       }
     }
   }
@@ -284,16 +316,16 @@ async function decode(body: DecodeBody): Promise<SAM3OutputItem> {
     body.textMaskBlob,
   );
   const inputs: Record<string, Tensor> = {
-    fpn_288: new Tensor("float32", features[0], FPN_SHAPES[0]),
-    fpn_144: new Tensor("float32", features[1], FPN_SHAPES[1]),
-    fpn_72: new Tensor("float32", features[2], FPN_SHAPES[2]),
+    fpn_288: new Tensor("float16", features[0], FPN_SHAPES[0]),
+    fpn_144: new Tensor("float16", features[1], FPN_SHAPES[1]),
+    fpn_72: new Tensor("float16", features[2], FPN_SHAPES[2]),
     boxes: new Tensor("float32", body.boxes, [1, MAX_BOXES, 4]),
     box_valid: new Tensor("bool", body.boxValid, [1, MAX_BOXES]),
     box_labels: new Tensor("int64", body.boxLabels, [1, MAX_BOXES]),
     points: new Tensor("float32", body.points, [1, MAX_POINTS, 2]),
     point_valid: new Tensor("bool", body.pointValid, [1, MAX_POINTS]),
     point_labels: new Tensor("int64", body.pointLabels, [1, MAX_POINTS]),
-    language_features: new Tensor("float32", text.features, [
+    language_features: new Tensor("float16", text.features, [
       TEXT_TOKENS,
       1,
       TEXT_CHANNELS,
@@ -315,6 +347,7 @@ if ((self as any).importScripts) {
         if (!decoder) {
           decoder = await InferenceSession.create(
             (payload as InitBody).decoderURL,
+            { executionProviders: ["webgpu", "wasm"] },
           );
         }
         postMessage({ action, requestID });

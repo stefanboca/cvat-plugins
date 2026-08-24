@@ -37,6 +37,9 @@ if (configFile.error) {
         "@modules/onnxruntime-web": [
           path.join(nodeModules, "onnxruntime-common", "dist", "esm", "index.d.ts"),
         ],
+        "@modules/onnxruntime-web/webgpu": [
+          path.join(nodeModules, "onnxruntime-common", "dist", "esm", "index.d.ts"),
+        ],
         react: [path.join(nodeModules, "react")],
       },
     },

@@ -12,6 +12,16 @@ in the browser.
 
 Read `sam3/README.md` for the plugin operation and the server requirements.
 
+### Server-side SAM3
+
+The `sam3-server` directory contains a SAM3 interactive segmentation plugin.
+The serverless function runs the image encoder, the text encoder, and the
+grounding decoder. Use this plugin to compare server-side inference with the
+browser decoder in the `sam3` plugin.
+
+Read `sam3-server/README.md` for the plugin operation and the server
+requirements.
+
 ## Build CVAT with plugins
 
 `CLIENT_PLUGINS` is a build-time variable. Use an absolute path because this

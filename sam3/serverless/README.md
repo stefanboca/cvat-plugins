@@ -12,6 +12,9 @@ The function ID is `pth-facebookresearch-sam3`.
 
 Use `nuclio/function-gpu.yaml` for an NVIDIA GPU.
 
+Use `nuclio/function-gpu-cu126.yaml` for an NVIDIA GPU that has compute
+capability 5.2. This configuration installs the CUDA 12.6 PyTorch packages.
+
 Use `nuclio/function.yaml` for a CPU-only system. CPU inference is slow. Set
 `CVAT_NUCLIO_DEFAULT_TIMEOUT` to 300 or more if CVAT stops the request before
 the function completes.
@@ -63,6 +66,17 @@ Run this command from the `sam3` directory:
 nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function.yaml \
+  --platform local --env HF_TOKEN=hf_...
+```
+
+## Deploy the CUDA 12.6 GPU function
+
+Run this command from the `sam3` directory:
+
+```console
+nuctl deploy --project-name cvat \
+  --path serverless/nuclio \
+  --file serverless/nuclio/function-gpu-cu126.yaml \
   --platform local --env HF_TOKEN=hf_...
 ```
 

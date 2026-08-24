@@ -53,7 +53,10 @@ class ModelHandler:
 
     @torch.inference_mode()
     def encode_image(self, image):
-        if self.device.type == "cuda":
+        if (
+            self.device.type == "cuda"
+            and torch.cuda.get_device_capability()[0] >= 8
+        ):
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 state = self.processor.set_image(image)
         else:

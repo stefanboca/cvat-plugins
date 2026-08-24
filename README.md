@@ -22,6 +22,20 @@ browser decoder in the `sam3` plugin.
 Read `sam3-server/README.md` for the plugin operation and the server
 requirements.
 
+### SAM2
+
+The `sam2` directory contains a SAM2.1 interactive segmentation plugin. A
+Nuclio function calculates image features. The browser runs the decoder.
+
+Read `sam2/README.md` for setup instructions.
+
+### Server-side SAM2
+
+The `sam2-server` directory contains a full server-side SAM2.1 function. It
+caches image features and returns masks to CVAT.
+
+Read `sam2-server/README.md` for setup instructions.
+
 ## Build CVAT with plugins
 
 `CLIENT_PLUGINS` is a build-time variable. Use an absolute path because this

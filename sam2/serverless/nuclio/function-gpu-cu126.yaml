@@ -1,0 +1,58 @@
+metadata:
+  name: pth-facebookresearch-sam2
+  namespace: cvat
+  annotations:
+    name: Segment Anything 2
+    version: 2
+    type: interactor
+    spec:
+    min_pos_points: 0
+    min_neg_points: 0
+    startswith_box_optional: true
+    help_message: Use one optional box and up to 64 positive or negative points to segment an object with SAM2
+spec:
+  description: SAM2 image encoder for interactive segmentation in the CVAT browser
+  runtime: "python:3.10"
+  handler: main:handler
+  eventTimeout: 120s
+  env:
+    - name: NVIDIA_VISIBLE_DEVICES
+      value: all
+  build:
+    image: cvat.pth.facebookresearch.sam2:latest-gpu-cu126
+    baseImage: ubuntu:22.04
+    directives:
+      preCopy:
+        - kind: ENV
+          value: SAM2_BUILD_CUDA=0
+        - kind: ENV
+          value: NVIDIA_DRIVER_CAPABILITIES=compute,utility
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: WORKDIR
+          value: /opt/nuclio
+        - kind: RUN
+          value: apt-get update && apt-get -y install git python3 python3-pip python-is-python3 && rm -rf /var/lib/apt/lists/*
+        - kind: RUN
+          value: python3 -m pip install pip==26.2.1 setuptools==80.10.2 wheel==0.48.0 --no-cache-dir
+        - kind: RUN
+          value: python3 -m pip install torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cu126 --no-cache-dir
+        - kind: RUN
+          value: python3 -m pip install git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4 --no-cache-dir
+        - kind: RUN
+          value: python3 -c "from sam2.sam2_image_predictor import SAM2ImagePredictor"
+  triggers:
+    myHttpTrigger:
+      numWorkers: 1
+      kind: http
+      workerAvailabilityTimeoutMilliseconds: 300000
+      attributes:
+        maxRequestBodySize: 33554432
+  devices:
+    - nvidia.com/gpu=all
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume

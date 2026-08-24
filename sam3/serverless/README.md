@@ -80,6 +80,15 @@ nuctl deploy --project-name cvat \
   --platform local --env HF_TOKEN=hf_...
 ```
 
+## Select a GPU
+
+Set `NVIDIA_VISIBLE_DEVICES` during deployment. For example, add
+`--env NVIDIA_VISIBLE_DEVICES=0` to use physical GPU 0. Add
+`--env NVIDIA_VISIBLE_DEVICES=1` to use physical GPU 1.
+
+Use a GPU UUID for a stable selection. Run `nvidia-smi -L` to get the UUID.
+The selected physical GPU is `cuda:0` inside the container.
+
 ## Cache operation
 
 The browser has separate caches for image features and text features. Each

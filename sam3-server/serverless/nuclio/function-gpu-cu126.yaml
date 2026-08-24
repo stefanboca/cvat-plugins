@@ -19,6 +19,8 @@ spec:
   env:
     - name: HF_HOME
       value: /opt/nuclio/.cache/huggingface
+    - name: NVIDIA_VISIBLE_DEVICES
+      value: all
     - name: SAM3_IMAGE_CACHE_SIZE
       value: "2"
     - name: SAM3_TEXT_CACHE_SIZE

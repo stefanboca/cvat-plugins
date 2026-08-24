@@ -92,6 +92,16 @@ image features.
 Each function worker has separate caches. The supplied configurations use one
 worker. A function restart clears both caches.
 
+## Select a GPU
+
+Set `NVIDIA_VISIBLE_DEVICES` during deployment. For example, add
+`--env NVIDIA_VISIBLE_DEVICES=1` to use physical GPU 1. You can deploy the
+browser-decoder function with `--env NVIDIA_VISIBLE_DEVICES=0` to put the two
+functions on different GPUs.
+
+Use a GPU UUID for a stable selection. Run `nvidia-smi -L` to get the UUID.
+The selected physical GPU is `cuda:0` inside the container.
+
 ## Cache keys
 
 The CVAT server does not send task, job, frame, or ROI identifiers to an

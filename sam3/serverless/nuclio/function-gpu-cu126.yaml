@@ -19,6 +19,8 @@ spec:
   env:
     - name: HF_HOME
       value: /opt/nuclio/.cache/huggingface
+    - name: NVIDIA_VISIBLE_DEVICES
+      value: all
 
   build:
     image: cvat.pth.facebookresearch.sam3:latest-gpu-cu126

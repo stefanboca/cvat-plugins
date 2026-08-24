@@ -1,0 +1,10 @@
+const fs = require("fs");
+const path = require("path");
+const source = path.join(__dirname, "assets", "sam2_decoder.onnx");
+const root = process.env.CVAT_UI_ROOT;
+if (!root) throw new Error("SAM2 requires CVAT_UI_ROOT at build time.");
+const destination = path.join(path.resolve(root), "dist", "assets", path.basename(source));
+fs.mkdirSync(path.dirname(destination), { recursive: true });
+const old = fs.existsSync(destination) ? fs.statSync(destination) : null;
+const current = fs.statSync(source);
+if (!old || old.size !== current.size || old.mtimeMs < current.mtimeMs) fs.copyFileSync(source, destination);

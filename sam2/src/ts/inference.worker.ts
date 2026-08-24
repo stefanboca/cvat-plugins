@@ -10,13 +10,16 @@ const imageCache = new Map<string, Uint16Array[]>();
 const resizeCache = new Map<number, { lower: Uint16Array; upper: Uint16Array; weight: Float32Array }>();
 env.wasm.wasmPaths = "/assets/";
 
-async function createDecoder(url: string): Promise<InferenceSession> {
-  if ("gpu" in navigator) {
+export type ExecutionProvider = "auto" | "webgpu" | "wasm";
+
+async function createDecoder(url: string, provider: ExecutionProvider): Promise<InferenceSession> {
+  if (provider !== "wasm" && "gpu" in navigator) {
     try {
       return await InferenceSession.create(url, {
         executionProviders: ["webgpu", "wasm"],
       });
     } catch (error) {
+      if (provider === "webgpu") throw error;
       console.warn("SAM2 WebGPU initialization failed. Using WebAssembly.", error);
     }
   }
@@ -24,7 +27,7 @@ async function createDecoder(url: string): Promise<InferenceSession> {
 }
 
 export enum WorkerAction { INIT = "init", DECODE = "decode" }
-export interface InitBody { decoderURL: string }
+export interface InitBody { decoderURL: string; executionProvider: ExecutionProvider }
 export interface DecodeBody {
   imageKey: string;
   imageBlobs: [string, string, string] | null;
@@ -142,7 +145,8 @@ if ((self as any).importScripts) {
     const { action, requestID, payload } = event.data;
     try {
       if (action === WorkerAction.INIT) {
-        if (!decoder) decoder = await createDecoder((payload as InitBody).decoderURL);
+        const init = payload as InitBody;
+        if (!decoder) decoder = await createDecoder(init.decoderURL, init.executionProvider);
         postMessage({ action, requestID });
       } else {
         postMessage({ action, requestID, payload: await decode(payload as DecodeBody) });

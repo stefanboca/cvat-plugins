@@ -7,6 +7,20 @@ The Nuclio function calculates image features. The browser runs the decoder
 with ONNX Runtime Web. WebGPU is the first execution provider. WebAssembly is
 the fallback provider.
 
+To test the WebAssembly decoder, run this command in the browser console and
+reload CVAT:
+
+```javascript
+localStorage.setItem("cvat.sam2.executionProvider", "wasm");
+```
+
+Set the value to `webgpu` to require WebGPU. Remove the setting to restore the
+automatic selection:
+
+```javascript
+localStorage.removeItem("cvat.sam2.executionProvider");
+```
+
 The plugin uses `facebook/sam2.1-hiera-large`. The browser decoder has 64
 point slots and one box. Static inputs make the ONNX model easier to run in a
 browser. The server-side variant does not have this point limit.

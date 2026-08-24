@@ -1,7 +1,7 @@
 import { LRUCache } from "@modules/lru-cache";
 import { type InteractorResults, type Job, type MLModel, ShapeType, Source } from "cvat-core-wrapper";
 import { APIWrapperEnterOptions, ComponentBuilder, PluginEntryPoint } from "components/plugins-entrypoint";
-import { DecodeBody, InitBody, SAM2OutputItem, WorkerAction } from "./inference.worker";
+import { DecodeBody, ExecutionProvider, InitBody, SAM2OutputItem, WorkerAction } from "./inference.worker";
 
 const MAX_POINTS = 64;
 type ROI = [number, number, number, number];
@@ -32,10 +32,17 @@ function send<T>(plugin: Plugin, action: WorkerAction, payload: InitBody | Decod
     plugin.data.worker.postMessage({ action, requestID, payload });
   });
 }
+function executionProvider(): ExecutionProvider {
+  const value = window.localStorage.getItem("cvat.sam2.executionProvider");
+  return value === "webgpu" || value === "wasm" ? value : "auto";
+}
 function initialize(plugin: Plugin): Promise<void> {
   if (plugin.data.initialized) return Promise.resolve();
   if (!plugin.data.initialization) {
-    plugin.data.initialization = send<void>(plugin, WorkerAction.INIT, { decoderURL: plugin.data.modelURL })
+    plugin.data.initialization = send<void>(plugin, WorkerAction.INIT, {
+      decoderURL: plugin.data.modelURL,
+      executionProvider: executionProvider(),
+    })
       .then(() => { plugin.data.initialized = true; })
       .catch((error) => { plugin.data.initialization = null; throw error; });
   }

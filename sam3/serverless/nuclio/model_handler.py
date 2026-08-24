@@ -2,13 +2,30 @@ import base64
 import os
 
 import torch
+import torch.nn.functional as F
+from sam3.model import vitdet
 from sam3.model.sam3_image_processor import Sam3Processor
 from sam3.model_builder import build_sam3_image_model
+
+
+def addmm_act_fp32(activation, linear, inputs):
+    outputs = linear(inputs)
+    if activation in (F.relu, torch.nn.ReLU):
+        return F.relu(outputs)
+    if activation in (F.gelu, torch.nn.GELU):
+        return F.gelu(outputs)
+    raise ValueError(f"Unexpected activation {activation}")
 
 
 class ModelHandler:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if (
+            self.device.type == "cuda"
+            and torch.cuda.get_device_capability()[0] < 8
+        ):
+            vitdet.addmm_act = addmm_act_fp32
+
         checkpoint_path = os.getenv("SAM3_CHECKPOINT")
         if checkpoint_path and not os.path.isfile(checkpoint_path):
             raise FileNotFoundError(
@@ -53,13 +70,11 @@ class ModelHandler:
 
     @torch.inference_mode()
     def encode_image(self, image):
-        if self.device.type == "cuda":
-            autocast_dtype = (
-                torch.bfloat16
-                if torch.cuda.get_device_capability()[0] >= 8
-                else torch.float16
-            )
-            with torch.autocast("cuda", dtype=autocast_dtype):
+        if (
+            self.device.type == "cuda"
+            and torch.cuda.get_device_capability()[0] >= 8
+        ):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 state = self.processor.set_image(image)
         else:
             state = self.processor.set_image(image)

@@ -30,6 +30,9 @@ const resizeAxisCache = new Map<
 >();
 
 env.wasm.wasmPaths = "/assets/";
+// Ask ONNX Runtime to include the failing kernel name in WebGPU validation
+// errors. The browser's default message only reports an invalid WGSL shader.
+env.debug = true;
 
 async function createDecoder(url: string): Promise<InferenceSession> {
   if ("gpu" in navigator) {

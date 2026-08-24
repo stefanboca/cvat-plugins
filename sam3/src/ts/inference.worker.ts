@@ -31,6 +31,19 @@ const resizeAxisCache = new Map<
 
 env.wasm.wasmPaths = "/assets/";
 
+async function createDecoder(url: string): Promise<InferenceSession> {
+  if ("gpu" in navigator) {
+    try {
+      return await InferenceSession.create(url, {
+        executionProviders: ["webgpu", "wasm"],
+      });
+    } catch (error) {
+      console.warn("SAM3 WebGPU initialization failed. Using WebAssembly.", error);
+    }
+  }
+  return InferenceSession.create(url, { executionProviders: ["wasm"] });
+}
+
 export enum WorkerAction {
   INIT = "init",
   DECODE = "decode",
@@ -345,10 +358,7 @@ if ((self as any).importScripts) {
     try {
       if (action === WorkerAction.INIT) {
         if (!decoder) {
-          decoder = await InferenceSession.create(
-            (payload as InitBody).decoderURL,
-            { executionProviders: ["webgpu", "wasm"] },
-          );
+          decoder = await createDecoder((payload as InitBody).decoderURL);
         }
         postMessage({ action, requestID });
       } else if (action === WorkerAction.DECODE) {

@@ -16,7 +16,7 @@ class ModelHandler:
             )
 
         self.model = build_sam3_image_model(
-            device=self.device,
+            device=self.device.type,
             eval_mode=True,
             checkpoint_path=checkpoint_path,
             load_from_HF=checkpoint_path is None,

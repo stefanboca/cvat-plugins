@@ -28,6 +28,22 @@ Use one of these methods:
 
 The function downloads the checkpoint only when `SAM3_CHECKPOINT` is not set.
 
+For example, use this command to mount a checkpoint from the host and deploy
+the GPU function:
+
+```console
+nuctl deploy --project-name cvat \
+  --path serverless/nuclio \
+  --file serverless/nuclio/function-gpu.yaml \
+  --platform local \
+  --volume /absolute/host/path/checkpoints:/opt/nuclio/checkpoints \
+  --env SAM3_CHECKPOINT=/opt/nuclio/checkpoints/sam3.pt
+```
+
+Replace `/absolute/host/path/checkpoints` with the absolute path of the host
+directory that contains `sam3.pt`. `SAM3_CHECKPOINT` must contain the path in
+the container.
+
 ## Deploy the GPU function
 
 Run this command from the `sam3` directory:

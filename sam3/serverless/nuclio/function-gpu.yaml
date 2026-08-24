@@ -17,10 +17,8 @@ spec:
   handler: main:handler
   eventTimeout: 120s
   env:
-    - name: PYTHONPATH
-      value: /opt/nuclio/sam3
     - name: HF_HOME
-      value: /opt/nuclio/sam3/.cache/huggingface
+      value: /opt/nuclio/.cache/huggingface
 
   build:
     image: cvat.pth.facebookresearch.sam3:latest-gpu
@@ -35,11 +33,15 @@ spec:
         - kind: ENV
           value: DEBIAN_FRONTEND=noninteractive
         - kind: WORKDIR
-          value: /opt/nuclio/sam3
+          value: /opt/nuclio
         - kind: RUN
           value: apt-get update && apt-get -y install git python3 python3-pip python-is-python3 && rm -rf /var/lib/apt/lists/*
         - kind: RUN
-          value: pip3 install torch==2.13.0 torchvision==0.28.0 pillow git+https://github.com/facebookresearch/sam3.git@8f0b7f4d4e7eda2ed606ebde6702c93359ad01da --no-cache-dir
+          value: python3 -m pip install pip==26.2.1 setuptools==80.10.2 wheel==0.48.0 --no-cache-dir
+        - kind: RUN
+          value: python3 -m pip install torch==2.13.0 torchvision==0.28.0 einops pillow psutil pycocotools git+https://github.com/facebookresearch/sam3.git@8f0b7f4d4e7eda2ed606ebde6702c93359ad01da --no-cache-dir
+        - kind: RUN
+          value: python3 -c "from sam3.model.sam3_image_processor import Sam3Processor"
 
   triggers:
     myHttpTrigger:

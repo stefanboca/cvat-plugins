@@ -23,7 +23,7 @@ class ModelHandler:
             enable_segmentation=False,
             enable_inst_interactivity=False,
             compile=False,
-        )
+        ).to(self.device)
         self.processor = Sam3Processor(self.model, resolution=1008, device=self.device)
 
     @torch.inference_mode()

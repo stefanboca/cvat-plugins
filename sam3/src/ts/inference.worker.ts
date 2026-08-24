@@ -34,12 +34,53 @@ env.wasm.wasmPaths = "/assets/";
 // errors. The browser's default message only reports an invalid WGSL shader.
 env.debug = true;
 
+function installWebGPUShaderDiagnostics(): void {
+  const device = (env.webgpu as any).device as any;
+  if (!device || device.__sam3ShaderDiagnosticsInstalled) {
+    return;
+  }
+
+  device.__sam3ShaderDiagnosticsInstalled = true;
+  const createShaderModule = device.createShaderModule.bind(device);
+  device.createShaderModule = (descriptor: any): any => {
+    const module = createShaderModule(descriptor);
+    void module
+      .getCompilationInfo()
+      .then((info: any) => {
+        const errors = info.messages.filter(
+          (message: any) => message.type === "error",
+        );
+        if (errors.length === 0) {
+          return;
+        }
+
+        const details = errors
+          .map(
+            (message: any) =>
+              `${message.lineNum}:${message.linePos} ${message.message}`,
+          )
+          .join("\n");
+        console.error(
+          `SAM3 WebGPU shader compilation failed\n` +
+            `Label: ${descriptor.label ?? "(none)"}\n` +
+            `${details}\nWGSL source:\n${descriptor.code}`,
+        );
+      })
+      .catch((error: unknown) => {
+        console.error("SAM3 could not read WebGPU compilation info", error);
+      });
+    return module;
+  };
+}
+
 async function createDecoder(url: string): Promise<InferenceSession> {
   if ("gpu" in navigator) {
     try {
-      return await InferenceSession.create(url, {
+      const session = await InferenceSession.create(url, {
         executionProviders: ["webgpu", "wasm"],
       });
+      installWebGPUShaderDiagnostics();
+      return session;
     } catch (error) {
       console.warn("SAM3 WebGPU initialization failed. Using WebAssembly.", error);
     }

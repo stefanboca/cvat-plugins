@@ -421,10 +421,9 @@ def main() -> None:
     ort_inputs = {}
     for name, value in zip(INPUT_NAMES, inputs):
         array = value.detach().cpu().numpy()
-        # Match the Nuclio-to-browser wire format used in production. The
-        # worker expands these FP16 blobs back to float32 before ONNX Runtime.
+        # Match the Nuclio-to-browser wire format used in production.
         if name in FP16_TRANSPORT_INPUTS:
-            array = array.astype(np.float16).astype(np.float32)
+            array = array.astype(np.float16)
         ort_inputs[name] = array
     del inputs, wrapper, model
     gc.collect()

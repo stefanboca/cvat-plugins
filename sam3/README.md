@@ -17,6 +17,10 @@ If the text field is empty, the plugin uses the text `visual`.
 A Nuclio function calculates the SAM3 image features and text features. The
 browser runs the SAM3 grounding decoder with ONNX Runtime Web.
 
+The browser uses WebGPU when WebGPU is available. It uses WebAssembly when
+WebGPU is not available. The browser keeps the image features and text
+features in FP16 format. This format decreases conversion time and memory use.
+
 The browser has two separate caches. The image cache contains two entries. The
 text cache contains 32 entries.
 

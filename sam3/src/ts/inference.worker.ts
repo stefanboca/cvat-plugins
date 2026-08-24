@@ -2,7 +2,7 @@ import {
   InferenceSession,
   Tensor,
   env,
-} from "@modules/onnxruntime-web/webgpu";
+} from "@modules/onnxruntime-web/dist/ort.webgpu.min.mjs";
 
 const FPN_SHAPES = [
   [1, 256, 288, 288],

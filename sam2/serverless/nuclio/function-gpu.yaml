@@ -20,8 +20,6 @@ spec:
       value: /opt/nuclio/huggingface/hub
     - name: HF_HUB_OFFLINE
       value: "1"
-    - name: NVIDIA_VISIBLE_DEVICES
-      value: all
   build:
     image: cvat.pth.facebookresearch.sam2:latest-gpu
     baseImage: ubuntu:22.04

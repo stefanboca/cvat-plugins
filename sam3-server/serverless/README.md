@@ -72,13 +72,17 @@ worker. A function restart clears both caches.
 
 ## Select a GPU
 
-Set `NVIDIA_VISIBLE_DEVICES` during deployment. For example, add
-`--env NVIDIA_VISIBLE_DEVICES=1` to use physical GPU 1. You can deploy the
-browser-decoder function with `--env NVIDIA_VISIBLE_DEVICES=0` to put the two
-functions on different GPUs.
+Set `CUDA_VISIBLE_DEVICES` during deployment. The GPU YAML makes all GPUs
+available to the container. Add `--env CUDA_VISIBLE_DEVICES=1` to use physical
+GPU 1. You can deploy the browser-decoder function with
+`--env CUDA_VISIBLE_DEVICES=0` to put the two functions on different GPUs.
 
 Use a GPU UUID for a stable selection. Run `nvidia-smi -L` to get the UUID.
 The selected physical GPU is `cuda:0` inside the container.
+
+For container-level isolation, change `nvidia.com/gpu=all` in each file's
+`spec.devices` field to a device such as `nvidia.com/gpu=0` or
+`nvidia.com/gpu=1`.
 
 The supplied YAML sets `HF_HUB_OFFLINE=1`. This setting prevents network
 requests. If the cache is incomplete, deploy with `--env HF_HUB_OFFLINE=0`

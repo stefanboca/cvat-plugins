@@ -27,8 +27,9 @@ Use `function-gpu-cu126.yaml` for a compute capability 5.2 GPU. Use
 
 ## Select a GPU
 
-Set `NVIDIA_VISIBLE_DEVICES` during deployment. For example, set the browser
-function to GPU 0 and this function to GPU 1:
+Set `CUDA_VISIBLE_DEVICES` during deployment. The GPU YAML makes all GPUs
+available to each container. This variable tells CUDA which GPU to use. For
+example, set the browser function to GPU 0 and this function to GPU 1:
 
 ```console
 # Run this command from the sam2 directory.
@@ -36,19 +37,23 @@ nuctl deploy --project-name cvat --path serverless/nuclio \
   --file serverless/nuclio/function-gpu-cu126.yaml --platform local \
   --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
   --env HF_HUB_OFFLINE=1 \
-  --env NVIDIA_VISIBLE_DEVICES=0
+  --env CUDA_VISIBLE_DEVICES=0
 
 # Run this command from the sam2-server directory.
 nuctl deploy --project-name cvat --path serverless/nuclio \
   --file serverless/nuclio/function-gpu-cu126.yaml --platform local \
   --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
   --env HF_HUB_OFFLINE=1 \
-  --env NVIDIA_VISIBLE_DEVICES=1
+  --env CUDA_VISIBLE_DEVICES=1
 ```
 
 Use GPU UUIDs instead of indices if the device order can change. Run
 `nvidia-smi -L` to get the UUIDs. Each selected physical GPU is `cuda:0`
 inside its container.
+
+For container-level isolation, change `nvidia.com/gpu=all` in each file's
+`spec.devices` field to a device such as `nvidia.com/gpu=0` or
+`nvidia.com/gpu=1`.
 
 The supplied YAML sets `HF_HUB_OFFLINE=1`. This setting prevents network
 requests. If the cache is incomplete, deploy with `--env HF_HUB_OFFLINE=0`.

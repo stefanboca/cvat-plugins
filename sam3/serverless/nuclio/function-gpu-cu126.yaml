@@ -21,8 +21,6 @@ spec:
       value: /opt/nuclio/huggingface/hub
     - name: HF_HUB_OFFLINE
       value: "1"
-    - name: NVIDIA_VISIBLE_DEVICES
-      value: all
 
   build:
     image: cvat.pth.facebookresearch.sam3:latest-gpu-cu126
@@ -30,8 +28,6 @@ spec:
 
     directives:
       preCopy:
-        - kind: ENV
-          value: NVIDIA_VISIBLE_DEVICES=all
         - kind: ENV
           value: NVIDIA_DRIVER_CAPABILITIES=compute,utility
         - kind: ENV

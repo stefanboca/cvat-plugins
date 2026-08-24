@@ -21,8 +21,6 @@ spec:
       value: /opt/nuclio/huggingface/hub
     - name: HF_HUB_OFFLINE
       value: "1"
-    - name: NVIDIA_VISIBLE_DEVICES
-      value: all
     - name: SAM3_IMAGE_CACHE_SIZE
       value: "2"
     - name: SAM3_TEXT_CACHE_SIZE
@@ -34,8 +32,6 @@ spec:
 
     directives:
       preCopy:
-        - kind: ENV
-          value: NVIDIA_VISIBLE_DEVICES=all
         - kind: ENV
           value: NVIDIA_DRIVER_CAPABILITIES=compute,utility
         - kind: ENV

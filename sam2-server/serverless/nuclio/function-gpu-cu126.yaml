@@ -22,8 +22,6 @@ spec:
       value: "1"
     - name: SAM2_IMAGE_CACHE_SIZE
       value: "2"
-    - name: NVIDIA_VISIBLE_DEVICES
-      value: all
   build:
     image: cvat.pth.facebookresearch.sam2.server:latest-gpu-cu126
     baseImage: ubuntu:22.04

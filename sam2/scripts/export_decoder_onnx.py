@@ -17,9 +17,6 @@ import torch
 from sam2.build_sam import build_sam2
 
 
-MAX_POINTS = 64
-
-
 class Decoder(torch.nn.Module):
     def __init__(self, model):
         super().__init__()
@@ -59,16 +56,18 @@ def main():
         torch.randn(1, 32, 256, 256, dtype=torch.float16),
         torch.randn(1, 64, 128, 128, dtype=torch.float16),
         torch.randn(1, 256, 64, 64, dtype=torch.float16),
-        torch.zeros(1, MAX_POINTS + 2, 2, dtype=torch.float32),
-        torch.full((1, MAX_POINTS + 2), -1, dtype=torch.int64),
+        torch.tensor([[[512.0, 512.0]]], dtype=torch.float32),
+        torch.ones(1, 1, dtype=torch.int64),
     )
-    inputs[4][0, 2] = 1
-    inputs[3][0, 2] = torch.tensor([512.0, 512.0])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.onnx.export(
         decoder, inputs, str(args.output), opset_version=18, dynamo=False,
         input_names=["high_res_0", "high_res_1", "image_embed", "point_coords", "point_labels"],
         output_names=["masks", "scores"],
+        dynamic_axes={
+            "point_coords": {1: "num_prompts"},
+            "point_labels": {1: "num_prompts"},
+        },
         do_constant_folding=True,
     )
     onnx.checker.check_model(str(args.output))
@@ -81,6 +80,19 @@ def main():
         np.testing.assert_allclose(result, reference_array, atol=0.25, rtol=0.03)
         difference = float(np.max(np.abs(result - reference_array)))
         print(f"Validated {name}: shape={result.shape}, max_abs_difference={difference:.6f}")
+    moved_inputs = (
+        *inputs[:3],
+        torch.tensor([[[128.0, 128.0], [896.0, 896.0]]]),
+        torch.ones(1, 2, dtype=torch.int64),
+    )
+    moved_feeds = {item.name: value.numpy() for item, value in zip(session.get_inputs(), moved_inputs)}
+    moved = session.run(None, moved_feeds)
+    moved_expected = decoder(*moved_inputs)
+    for name, reference, result in zip(("masks", "scores"), moved_expected, moved):
+        np.testing.assert_allclose(result, reference.detach().numpy(), atol=0.25, rtol=0.03)
+    if np.array_equal(actual[0], moved[0]):
+        raise RuntimeError("The ONNX decoder does not respond to changed prompt inputs")
+    print("Validated dynamic prompt count and coordinates")
     print(f"Wrote {args.output} ({args.output.stat().st_size} bytes)")
 
 

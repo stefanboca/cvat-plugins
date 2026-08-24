@@ -1,8 +1,6 @@
 import { InferenceSession, Tensor, env } from "@modules/onnxruntime-web/dist/ort.webgpu.min.mjs";
 
 const FEATURE_SHAPES = [[1, 32, 256, 256], [1, 64, 128, 128], [1, 256, 64, 64]] as const;
-const MAX_POINTS = 64;
-const PROMPT_SLOTS = MAX_POINTS + 2;
 const MASK_SIZE = 256;
 const MAX_CACHED_IMAGES = 2;
 let decoder: InferenceSession | null = null;
@@ -122,8 +120,8 @@ function resizeMask(logits: Float32Array, offset: number, width: number, height:
 
 async function decode(body: DecodeBody): Promise<SAM2OutputItem> {
   if (!decoder) throw new Error("SAM2 worker was not initialized");
-  if (body.coordinates.length !== PROMPT_SLOTS * 2 || body.labels.length !== PROMPT_SLOTS) {
-    throw new Error("SAM2 prompt tensors do not match the decoder capacity");
+  if (!body.labels.length || body.coordinates.length !== body.labels.length * 2) {
+    throw new Error("SAM2 prompt tensors do not match the decoder inputs");
   }
   const imageFeaturesReceived = body.imageBlobs !== null;
   const features = loadFeatures(body.imageKey, body.imageBlobs);
@@ -131,8 +129,8 @@ async function decode(body: DecodeBody): Promise<SAM2OutputItem> {
     high_res_0: new Tensor("float16", features[0], FEATURE_SHAPES[0]),
     high_res_1: new Tensor("float16", features[1], FEATURE_SHAPES[1]),
     image_embed: new Tensor("float16", features[2], FEATURE_SHAPES[2]),
-    point_coords: new Tensor("float32", body.coordinates, [1, PROMPT_SLOTS, 2]),
-    point_labels: new Tensor("int64", body.labels, [1, PROMPT_SLOTS]),
+    point_coords: new Tensor("float32", body.coordinates, [1, body.labels.length, 2]),
+    point_labels: new Tensor("int64", body.labels, [1, body.labels.length]),
   });
   const masks = (await outputs.masks.getData()) as unknown as Float32Array;
   const scores = (await outputs.scores.getData()) as unknown as Float32Array;

@@ -34,9 +34,8 @@ Remove the setting after the test:
 localStorage.removeItem("cvat.sam2.debug");
 ```
 
-The plugin uses `facebook/sam2.1-hiera-large`. The browser decoder has 64
-point slots and one box. Static inputs make the ONNX model easier to run in a
-browser. The server-side variant does not have this point limit.
+The plugin uses `facebook/sam2.1-hiera-large`. The browser decoder sends only
+the prompt tokens that the user supplies. It does not set a point limit.
 
 ## Build the UI
 
@@ -68,7 +67,8 @@ SAM2_BUILD_CUDA=0 uv run sam2/scripts/export_decoder_onnx.py \
 ```
 
 The exporter writes `sam2/assets/sam2_decoder.onnx`. It compares the ONNX
-output with the PyTorch output.
+output with the PyTorch output. It also checks a different prompt count and
+different prompt coordinates.
 
 ## Deploy the function
 

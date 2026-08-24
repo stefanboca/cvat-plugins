@@ -9,7 +9,7 @@ metadata:
     min_pos_points: 0
     min_neg_points: 0
     startswith_box_optional: true
-    help_message: Use one optional box and up to 64 positive or negative points to segment an object with SAM2
+    help_message: Use one optional box and positive or negative points to segment an object with SAM2
 spec:
   description: SAM2 image encoder for interactive segmentation in the CVAT browser
   runtime: "python:3.10"

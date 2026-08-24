@@ -3,7 +3,6 @@ import { type InteractorResults, type Job, type MLModel, ShapeType, Source } fro
 import { APIWrapperEnterOptions, ComponentBuilder, PluginEntryPoint } from "components/plugins-entrypoint";
 import { DecodeBody, ExecutionProvider, InitBody, SAM2OutputItem, WorkerAction } from "./inference.worker";
 
-const MAX_POINTS = 64;
 type ROI = [number, number, number, number];
 interface Arguments {
   frame: number; pos_points: number[][]; neg_points: number[][]; obj_bbox: number[][]; roi?: ROI;
@@ -57,11 +56,10 @@ function normalize(point: number[], roi: ROI | undefined, width: number, height:
 function makeBody(imageKey: string, blobs: [string, string, string] | null, args: Arguments, width: number, height: number): DecodeBody {
   if (args.obj_bbox.length !== 0 && args.obj_bbox.length !== 2) throw new Error("SAM2 requires two corners for one box");
   const count = args.pos_points.length + args.neg_points.length;
-  if (count > MAX_POINTS) throw new Error(`SAM2 supports at most ${MAX_POINTS} point prompts`);
   if (!args.obj_bbox.length && !count) throw new Error("SAM2 requires a box or a point prompt");
-  const coordinates = new Float32Array((MAX_POINTS + 2) * 2);
-  const labels = new BigInt64Array(MAX_POINTS + 2);
-  labels.fill(-1n);
+  const boxSlots = args.obj_bbox.length ? 2 : 0;
+  const coordinates = new Float32Array((boxSlots + count) * 2);
+  const labels = new BigInt64Array(boxSlots + count);
   if (args.obj_bbox.length) {
     const first = normalize(args.obj_bbox[0], args.roi, width, height);
     const second = normalize(args.obj_bbox[1], args.roi, width, height);
@@ -69,7 +67,7 @@ function makeBody(imageKey: string, blobs: [string, string, string] | null, args
     labels[0] = 2n; labels[1] = 3n;
   }
   const prompts = [...args.pos_points.map((point) => ({ point, label: 1n })), ...args.neg_points.map((point) => ({ point, label: 0n }))];
-  prompts.forEach(({ point, label }, index) => { coordinates.set(normalize(point, args.roi, width, height), (index + 2) * 2); labels[index + 2] = label; });
+  prompts.forEach(({ point, label }, index) => { coordinates.set(normalize(point, args.roi, width, height), (index + boxSlots) * 2); labels[index + boxSlots] = label; });
   return { imageKey, imageBlobs: blobs, coordinates, labels, width, height, debug: debugEnabled() };
 }
 function parse(value: unknown): ServerResult {

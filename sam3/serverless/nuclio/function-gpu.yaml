@@ -49,9 +49,8 @@ spec:
       attributes:
         maxRequestBodySize: 33554432
 
-  resources:
-    limits:
-      nvidia.com/gpu: 1
+  devices:
+    - nvidia.com/gpu=all
 
   platform:
     attributes:

@@ -18,8 +18,8 @@ nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu.yaml \
   --platform local \
-  --volume /absolute/host/path/checkpoints:/opt/nuclio/checkpoints \
-  --env SAM2_CHECKPOINT=/opt/nuclio/checkpoints/sam2.1_hiera_tiny.pt
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1
 ```
 
 Use `function-gpu-cu126.yaml` for a compute capability 5.2 GPU. Use
@@ -34,18 +34,22 @@ function to GPU 0 and this function to GPU 1:
 # Run this command from the sam2 directory.
 nuctl deploy --project-name cvat --path serverless/nuclio \
   --file serverless/nuclio/function-gpu-cu126.yaml --platform local \
-  --volume /absolute/host/path/checkpoints:/opt/nuclio/checkpoints \
-  --env SAM2_CHECKPOINT=/opt/nuclio/checkpoints/sam2.1_hiera_tiny.pt \
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1 \
   --env NVIDIA_VISIBLE_DEVICES=0
 
 # Run this command from the sam2-server directory.
 nuctl deploy --project-name cvat --path serverless/nuclio \
   --file serverless/nuclio/function-gpu-cu126.yaml --platform local \
-  --volume /absolute/host/path/checkpoints:/opt/nuclio/checkpoints \
-  --env SAM2_CHECKPOINT=/opt/nuclio/checkpoints/sam2.1_hiera_tiny.pt \
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1 \
   --env NVIDIA_VISIBLE_DEVICES=1
 ```
 
 Use GPU UUIDs instead of indices if the device order can change. Run
 `nvidia-smi -L` to get the UUIDs. Each selected physical GPU is `cuda:0`
 inside its container.
+
+The function calls
+`SAM2ImagePredictor.from_pretrained("facebook/sam2.1-hiera-large")`. It then
+moves the model to the selected device.

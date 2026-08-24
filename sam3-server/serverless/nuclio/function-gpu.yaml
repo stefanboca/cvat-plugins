@@ -17,8 +17,8 @@ spec:
   handler: main:handler
   eventTimeout: 120s
   env:
-    - name: HF_HOME
-      value: /opt/nuclio/.cache/huggingface
+    - name: HF_HUB_CACHE
+      value: /opt/nuclio/huggingface/hub
     - name: NVIDIA_VISIBLE_DEVICES
       value: all
     - name: SAM3_IMAGE_CACHE_SIZE

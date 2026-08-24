@@ -7,13 +7,9 @@ from contextlib import nullcontext
 import numpy as np
 import torch
 from PIL import Image
-from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 from lru_cache import LRUCache
-
-
-MODEL_CONFIG = "configs/sam2.1/sam2.1_hiera_t.yaml"
 
 
 def mask_to_rle(mask):
@@ -33,12 +29,10 @@ def mask_to_rle(mask):
 class ModelHandler:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        checkpoint = os.getenv("SAM2_CHECKPOINT")
-        if not checkpoint or not os.path.isfile(checkpoint):
-            raise FileNotFoundError(f"SAM2_CHECKPOINT does not exist: {checkpoint}")
-        config = os.getenv("SAM2_MODEL_CONFIG", MODEL_CONFIG)
-        model = build_sam2(config, checkpoint, device=self.device, mode="eval")
-        self.predictor = SAM2ImagePredictor(model)
+        self.predictor = SAM2ImagePredictor.from_pretrained(
+            "facebook/sam2.1-hiera-large", device=self.device
+        )
+        self.predictor.model.to(self.device).eval()
         capacity = int(os.getenv("SAM2_IMAGE_CACHE_SIZE", "2"))
         if capacity < 1:
             raise ValueError("SAM2_IMAGE_CACHE_SIZE must be at least 1")

@@ -7,7 +7,7 @@ The Nuclio function calculates image features. The browser runs the decoder
 with ONNX Runtime Web. WebGPU is the first execution provider. WebAssembly is
 the fallback provider.
 
-The plugin uses the SAM2.1 Hiera tiny checkpoint. The browser decoder has 64
+The plugin uses `facebook/sam2.1-hiera-large`. The browser decoder has 64
 point slots and one box. Static inputs make the ONNX model easier to run in a
 browser. The server-side variant does not have this point limit.
 
@@ -37,7 +37,7 @@ Run this command from the repository root:
 
 ```console
 SAM2_BUILD_CUDA=0 uv run sam2/scripts/export_decoder_onnx.py \
-  --checkpoint /path/to/sam2.1_hiera_tiny.pt
+  --checkpoint /path/to/sam2.1_hiera_large.pt
 ```
 
 The exporter writes `sam2/assets/sam2_decoder.onnx`. It compares the ONNX

@@ -5,10 +5,11 @@
 This function calculates three FP16 image feature maps for the SAM2 browser
 plugin. The function ID is `pth-facebookresearch-sam2`.
 
-## Get the checkpoint
+## Prepare the model cache
 
-Download `sam2.1_hiera_tiny.pt` from the official SAM2 repository. Put the
-file in a host directory.
+Download `facebook/sam2.1-hiera-large` to your Hugging Face hub cache. Mount
+the complete directory in the container. The directory must include the
+`blobs`, `refs`, and `snapshots` directories.
 
 ## Deploy the GPU function
 
@@ -19,8 +20,8 @@ nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu.yaml \
   --platform local \
-  --volume /absolute/host/path/checkpoints:/opt/nuclio/checkpoints \
-  --env SAM2_CHECKPOINT=/opt/nuclio/checkpoints/sam2.1_hiera_tiny.pt
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1
 ```
 
 Use `function-gpu-cu126.yaml` for a compute capability 5.2 GPU. This file
@@ -36,10 +37,16 @@ nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu-cu126.yaml \
   --platform local \
-  --volume /absolute/host/path/checkpoints:/opt/nuclio/checkpoints \
-  --env SAM2_CHECKPOINT=/opt/nuclio/checkpoints/sam2.1_hiera_tiny.pt \
+  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
+  --env HF_HUB_OFFLINE=1 \
   --env NVIDIA_VISIBLE_DEVICES=0
 ```
 
 Use a GPU UUID for a stable selection. Run `nvidia-smi -L` to get the UUID.
 The selected physical GPU is `cuda:0` inside the container.
+
+The function calls
+`SAM2ImagePredictor.from_pretrained("facebook/sam2.1-hiera-large")`. It then
+moves the model to the selected device. The browser ONNX decoder contains
+weights from the same model. Do not change the model independently. Export a
+matching decoder if you change it.

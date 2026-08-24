@@ -48,7 +48,7 @@ def main():
     parser.add_argument("--checkpoint", required=True, type=Path)
     parser.add_argument("--output", type=Path, default=Path(__file__).parents[1] / "assets/sam2_decoder.onnx")
     args = parser.parse_args()
-    model = build_sam2("configs/sam2.1/sam2.1_hiera_t.yaml", str(args.checkpoint), device="cpu", mode="eval")
+    model = build_sam2("configs/sam2.1/sam2.1_hiera_l.yaml", str(args.checkpoint), device="cpu", mode="eval")
     decoder = Decoder(model).half().eval()
     # The official coordinate encoder always calculates its Fourier features
     # in FP32. Keep its matrix in FP32, then cast its output for the FP16 decoder.

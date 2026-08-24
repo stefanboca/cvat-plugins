@@ -17,8 +17,8 @@ spec:
   handler: main:handler
   eventTimeout: 300s
   env:
-    - name: HF_HOME
-      value: /opt/nuclio/.cache/huggingface
+    - name: HF_HUB_CACHE
+      value: /opt/nuclio/huggingface/hub
 
   build:
     image: cvat.pth.facebookresearch.sam3:latest

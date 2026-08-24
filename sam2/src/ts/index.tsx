@@ -36,6 +36,9 @@ function executionProvider(): ExecutionProvider {
   const value = window.localStorage.getItem("cvat.sam2.executionProvider");
   return value === "webgpu" || value === "wasm" ? value : "auto";
 }
+function debugEnabled(): boolean {
+  return window.localStorage.getItem("cvat.sam2.debug") === "1";
+}
 function initialize(plugin: Plugin): Promise<void> {
   if (plugin.data.initialized) return Promise.resolve();
   if (!plugin.data.initialization) {
@@ -67,7 +70,7 @@ function makeBody(imageKey: string, blobs: [string, string, string] | null, args
   }
   const prompts = [...args.pos_points.map((point) => ({ point, label: 1n })), ...args.neg_points.map((point) => ({ point, label: 0n }))];
   prompts.forEach(({ point, label }, index) => { coordinates.set(normalize(point, args.roi, width, height), (index + 2) * 2); labels[index + 2] = label; });
-  return { imageKey, imageBlobs: blobs, coordinates, labels, width, height };
+  return { imageKey, imageBlobs: blobs, coordinates, labels, width, height, debug: debugEnabled() };
 }
 function parse(value: unknown): ServerResult {
   const result = value as Partial<ServerResult> | null;
@@ -98,7 +101,22 @@ const plugin: Plugin = {
         const height = args.roi ? args.roi[3] - args.roi[1] : frame.height;
         const imageKey = key(taskID, args.frame, args.roi);
         const server = result ? parse(result) : null;
-        const item = await send<SAM2OutputItem>(current, WorkerAction.DECODE, makeBody(imageKey, server?.image_blobs ?? null, args, width, height));
+        const body = makeBody(imageKey, server?.image_blobs ?? null, args, width, height);
+        if (body.debug) {
+          console.info("SAM2 browser request", {
+            imageKey,
+            imageFeaturesReceived: !!server,
+            positivePoints: args.pos_points.map((point) => [...point]),
+            negativePoints: args.neg_points.map((point) => [...point]),
+            box: args.obj_bbox.map((point) => [...point]),
+            decoderPrompts: Array.from(body.labels, (label, index) => label === -1n ? null : {
+              label: Number(label),
+              x: body.coordinates[index * 2],
+              y: body.coordinates[index * 2 + 1],
+            }).filter((prompt) => prompt !== null),
+          });
+        }
+        const item = await send<SAM2OutputItem>(current, WorkerAction.DECODE, body);
         if (server) current.data.images.set(imageKey, true);
         let rle = current.callbacks.mask2Rle!(item.points);
         if (rle.length < 2) rle = [0, 0, 0, 0, 0];

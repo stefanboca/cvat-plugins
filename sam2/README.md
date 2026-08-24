@@ -21,6 +21,19 @@ automatic selection:
 localStorage.removeItem("cvat.sam2.executionProvider");
 ```
 
+To log the prompts and decoder results, run these commands and reload CVAT:
+
+```javascript
+localStorage.setItem("cvat.sam2.debug", "1");
+location.reload();
+```
+
+Remove the setting after the test:
+
+```javascript
+localStorage.removeItem("cvat.sam2.debug");
+```
+
 The plugin uses `facebook/sam2.1-hiera-large`. The browser decoder has 64
 point slots and one box. Static inputs make the ONNX model easier to run in a
 browser. The server-side variant does not have this point limit.

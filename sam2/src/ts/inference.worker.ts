@@ -35,6 +35,7 @@ export interface DecodeBody {
   labels: BigInt64Array;
   width: number;
   height: number;
+  debug: boolean;
 }
 export interface SAM2OutputItem { points: Uint8ClampedArray; bounds: [number, number, number, number] }
 interface WorkerInput { action: WorkerAction; requestID: number; payload: InitBody | DecodeBody }
@@ -124,6 +125,7 @@ async function decode(body: DecodeBody): Promise<SAM2OutputItem> {
   if (body.coordinates.length !== PROMPT_SLOTS * 2 || body.labels.length !== PROMPT_SLOTS) {
     throw new Error("SAM2 prompt tensors do not match the decoder capacity");
   }
+  const imageFeaturesReceived = body.imageBlobs !== null;
   const features = loadFeatures(body.imageKey, body.imageBlobs);
   const outputs = await decoder.run({
     high_res_0: new Tensor("float16", features[0], FEATURE_SHAPES[0]),
@@ -136,7 +138,22 @@ async function decode(body: DecodeBody): Promise<SAM2OutputItem> {
   const scores = (await outputs.scores.getData()) as unknown as Float32Array;
   let best = 0;
   for (let index = 1; index < scores.length; index++) if (scores[index] > scores[best]) best = index;
-  return resizeMask(masks, best * MASK_SIZE * MASK_SIZE, body.width, body.height);
+  const result = resizeMask(masks, best * MASK_SIZE * MASK_SIZE, body.width, body.height);
+  if (body.debug) {
+    console.info("SAM2 worker result", {
+      imageKey: body.imageKey,
+      imageFeaturesReceived,
+      prompts: Array.from(body.labels, (label, index) => label === -1n ? null : {
+        label: Number(label),
+        x: body.coordinates[index * 2],
+        y: body.coordinates[index * 2 + 1],
+      }).filter((prompt) => prompt !== null),
+      scores: Array.from(scores),
+      selectedMask: best,
+      bounds: result.bounds,
+    });
+  }
+  return result;
 }
 
 // eslint-disable-next-line no-restricted-globals

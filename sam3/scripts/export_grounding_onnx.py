@@ -351,13 +351,45 @@ def topologically_sort_graph(graph: onnx.GraphProto) -> None:
     graph.node.extend(ordered)
 
 
+def remove_duplicate_output_nodes(graph: onnx.GraphProto) -> None:
+    """Remove identical Cast nodes inserted for a shared blocked-op input."""
+    for node in graph.node:
+        for attribute in node.attribute:
+            if attribute.type == onnx.AttributeProto.GRAPH:
+                remove_duplicate_output_nodes(attribute.g)
+            elif attribute.type == onnx.AttributeProto.GRAPHS:
+                for child in attribute.graphs:
+                    remove_duplicate_output_nodes(child)
+
+    producers: dict[str, onnx.NodeProto] = {}
+    kept = []
+    for node in graph.node:
+        previous = [producers[name] for name in node.output if name in producers]
+        if previous:
+            prior = previous[0]
+            if any(item is not prior for item in previous) or (
+                node.SerializeToString() != prior.SerializeToString()
+            ):
+                names = [name for name in node.output if name in producers]
+                raise ValueError(f"different nodes produce the same values: {names}")
+            continue
+        kept.append(node)
+        producers.update((name, node) for name in node.output if name)
+    del graph.node[:]
+    graph.node.extend(kept)
+
+
 def reduce_to_fp16(fp32_model: Path, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     model = onnx.load(str(fp32_model), load_external_data=True)
     model = convert_float_to_float16(
         model,
         keep_io_types=["boxes", "points", "mask_logits"],
+        # ONNX Runtime Web 1.23.2 generates an invalid WGSL expression for
+        # FP16 Clip on Firefox. Keep this small elementwise operation in FP32.
+        op_block_list=["Clip"],
     )
+    remove_duplicate_output_nodes(model.graph)
     topologically_sort_graph(model.graph)
     onnx.save_model(model, str(output), save_as_external_data=False)
 

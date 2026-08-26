@@ -21,8 +21,8 @@ The browser uses WebGPU when WebGPU is available. It uses WebAssembly when
 WebGPU is not available. The browser keeps the image features and text
 features in FP16 format. This format decreases conversion time and memory use.
 
-The browser has two separate caches. The image cache contains two entries. The
-text cache contains 32 entries.
+The browser has two separate caches. The image cache and the text cache each
+contain 32 entries.
 
 If both entries are in the caches, the browser does not call the function. If
 one entry is not in a cache, the function calculates only that entry.

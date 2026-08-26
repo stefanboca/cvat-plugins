@@ -15,15 +15,8 @@ const MAX_POINTS = 64;
 const MASK_SIZE = 288;
 const TEXT_TOKENS = 32;
 const TEXT_CHANNELS = 256;
-const MAX_CACHED_IMAGES = 2;
-const MAX_CACHED_TEXTS = 32;
 
 let decoder: InferenceSession | null = null;
-const imageFeatureCache = new Map<string, Uint16Array[]>();
-const textFeatureCache = new Map<
-  string,
-  { features: Uint16Array; mask: Uint8Array }
->();
 const resizeAxisCache = new Map<
   number,
   { lower: Uint16Array; upper: Uint16Array; weight: Float32Array }
@@ -94,12 +87,15 @@ export interface InitBody {
   decoderURL: string;
 }
 
+export type ImageFeatures = [Uint16Array, Uint16Array, Uint16Array];
+export interface TextFeatures {
+  features: Uint16Array;
+  mask: Uint8Array;
+}
+
 export interface DecodeBody {
-  imageKey: string;
-  imageBlobs: [string, string, string] | null;
-  textKey: string;
-  textFeatureBlob: string | null;
-  textMaskBlob: string | null;
+  imageFeatures: ImageFeatures;
+  textFeatures: TextFeatures;
   boxes: Float32Array;
   boxValid: Uint8Array;
   boxLabels: BigInt64Array;
@@ -131,121 +127,6 @@ function errorToMessage(error: unknown): string {
 
   console.error(error);
   return "Unknown error, please check console";
-}
-
-interface Uint8ArrayConstructorWithBase64 extends Uint8ArrayConstructor {
-  fromBase64?: (value: string) => Uint8Array;
-}
-
-function decodeBase64(blob: string, expectedLength: number): Uint8Array {
-  const nativeDecoder = (Uint8Array as Uint8ArrayConstructorWithBase64)
-    .fromBase64;
-  if (nativeDecoder) {
-    const result = nativeDecoder(blob);
-    if (result.length !== expectedLength) {
-      throw new Error(
-        `Unexpected SAM3 tensor size: got ${result.length} bytes, expected ${expectedLength}`,
-      );
-    }
-    return result;
-  }
-
-  const binary = atob(blob);
-  if (binary.length !== expectedLength) {
-    throw new Error(
-      `Unexpected SAM3 tensor size: got ${binary.length} bytes, expected ${expectedLength}`,
-    );
-  }
-  const result = new Uint8Array(expectedLength);
-  for (let index = 0; index < expectedLength; index++) {
-    result[index] = binary.charCodeAt(index);
-  }
-  return result;
-}
-
-function decodeFloat16(blob: string, expectedLength: number): Uint16Array {
-  const bytes = decodeBase64(blob, expectedLength * 2);
-  return new Uint16Array(bytes.buffer, bytes.byteOffset, expectedLength);
-}
-
-function putLRU<T>(
-  cache: Map<string, T>,
-  key: string,
-  value: T,
-  max: number,
-): void {
-  cache.delete(key);
-  cache.set(key, value);
-  if (cache.size > max) {
-    cache.delete(cache.keys().next().value);
-  }
-}
-
-function getLRU<T>(cache: Map<string, T>, key: string): T | null {
-  const value = cache.get(key);
-  if (!value) {
-    return null;
-  }
-  cache.delete(key);
-  cache.set(key, value);
-  return value;
-}
-
-function loadImageFeatures(
-  imageKey: string,
-  blobs: [string, string, string] | null,
-): Uint16Array[] {
-  if (blobs) {
-    const features = blobs.map((blob, index) => {
-      const shape = FPN_SHAPES[index];
-      const length = shape.reduce(
-        (accumulator, dimension) => accumulator * dimension,
-        1,
-      );
-      return decodeFloat16(blob, length);
-    });
-    putLRU(imageFeatureCache, imageKey, features, MAX_CACHED_IMAGES);
-  }
-
-  const features = getLRU(imageFeatureCache, imageKey);
-  if (!features) {
-    throw new Error("SAM3 image features are not cached for this frame");
-  }
-
-  return features;
-}
-
-function decodeBytes(blob: string, expectedLength: number): Uint8Array {
-  return decodeBase64(blob, expectedLength);
-}
-
-function loadTextFeatures(
-  textKey: string,
-  featureBlob: string | null,
-  maskBlob: string | null,
-): { features: Uint16Array; mask: Uint8Array } {
-  if ((featureBlob === null) !== (maskBlob === null)) {
-    throw new Error(
-      "SAM3 text feature and mask blobs must be supplied together",
-    );
-  }
-  if (featureBlob && maskBlob) {
-    putLRU(
-      textFeatureCache,
-      textKey,
-      {
-        features: decodeFloat16(featureBlob, TEXT_TOKENS * TEXT_CHANNELS),
-        mask: decodeBytes(maskBlob, TEXT_TOKENS),
-      },
-      MAX_CACHED_TEXTS,
-    );
-  }
-
-  const text = getLRU(textFeatureCache, textKey);
-  if (!text) {
-    throw new Error("SAM3 text features are not cached for this prompt");
-  }
-  return text;
 }
 
 function getResizeAxis(outputSize: number): {
@@ -363,28 +244,22 @@ async function decode(body: DecodeBody): Promise<SAM3OutputItem> {
     );
   }
 
-  const features = loadImageFeatures(body.imageKey, body.imageBlobs);
-  const text = loadTextFeatures(
-    body.textKey,
-    body.textFeatureBlob,
-    body.textMaskBlob,
-  );
   const inputs: Record<string, Tensor> = {
-    fpn_288: new Tensor("float16", features[0], FPN_SHAPES[0]),
-    fpn_144: new Tensor("float16", features[1], FPN_SHAPES[1]),
-    fpn_72: new Tensor("float16", features[2], FPN_SHAPES[2]),
+    fpn_288: new Tensor("float16", body.imageFeatures[0], FPN_SHAPES[0]),
+    fpn_144: new Tensor("float16", body.imageFeatures[1], FPN_SHAPES[1]),
+    fpn_72: new Tensor("float16", body.imageFeatures[2], FPN_SHAPES[2]),
     boxes: new Tensor("float32", body.boxes, [1, MAX_BOXES, 4]),
     box_valid: new Tensor("bool", body.boxValid, [1, MAX_BOXES]),
     box_labels: new Tensor("int64", body.boxLabels, [1, MAX_BOXES]),
     points: new Tensor("float32", body.points, [1, MAX_POINTS, 2]),
     point_valid: new Tensor("bool", body.pointValid, [1, MAX_POINTS]),
     point_labels: new Tensor("int64", body.pointLabels, [1, MAX_POINTS]),
-    language_features: new Tensor("float16", text.features, [
+    language_features: new Tensor("float16", body.textFeatures.features, [
       TEXT_TOKENS,
       1,
       TEXT_CHANNELS,
     ]),
-    language_mask: new Tensor("bool", text.mask, [1, TEXT_TOKENS]),
+    language_mask: new Tensor("bool", body.textFeatures.mask, [1, TEXT_TOKENS]),
   };
   const outputs = await decoder.run(inputs);
   const logits =

@@ -15,13 +15,18 @@ import {
 } from "components/plugins-entrypoint";
 import {
   DecodeBody,
+  ImageFeatures,
   InitBody,
   SAM3OutputItem,
+  TextFeatures,
   WorkerAction,
 } from "./inference.worker";
 
 const MAX_BOXES = 1;
 const MAX_POINTS = 64;
+const IMAGE_FEATURE_LENGTHS = [256 * 288 * 288, 256 * 144 * 144, 256 * 72 * 72] as const;
+const TEXT_TOKENS = 32;
+const TEXT_CHANNELS = 256;
 
 type ROI = [number, number, number, number];
 
@@ -82,8 +87,8 @@ interface SAM3Plugin {
     modelID: string;
     modelURL: string;
     textPrompt: string;
-    imageEmbeddings: LRUCache<string, true>;
-    textEmbeddings: LRUCache<string, true>;
+    imageEmbeddings: LRUCache<string, ImageFeatures>;
+    textEmbeddings: LRUCache<string, TextFeatures>;
     nextRequestID: number;
     requests: Map<
       number,
@@ -166,12 +171,50 @@ function normalizePoint(
   return [x / width, y / height];
 }
 
+interface Uint8ArrayConstructorWithBase64 extends Uint8ArrayConstructor {
+  fromBase64?: (value: string) => Uint8Array;
+}
+
+function decodeBase64(blob: string, expectedLength: number): Uint8Array {
+  const nativeDecoder = (Uint8Array as Uint8ArrayConstructorWithBase64).fromBase64;
+  let result: Uint8Array;
+  if (nativeDecoder) result = nativeDecoder(blob);
+  else {
+    const binary = atob(blob);
+    result = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) result[index] = binary.charCodeAt(index);
+  }
+  if (result.length !== expectedLength) {
+    throw new Error(
+      `Unexpected SAM3 tensor size: got ${result.length} bytes, expected ${expectedLength}`,
+    );
+  }
+  return result;
+}
+
+function decodeFloat16(blob: string, expectedLength: number): Uint16Array {
+  const bytes = decodeBase64(blob, expectedLength * 2);
+  return new Uint16Array(bytes.buffer, bytes.byteOffset, expectedLength);
+}
+
+function decodeImageFeatures(blobs: [string, string, string]): ImageFeatures {
+  return [
+    decodeFloat16(blobs[0], IMAGE_FEATURE_LENGTHS[0]),
+    decodeFloat16(blobs[1], IMAGE_FEATURE_LENGTHS[1]),
+    decodeFloat16(blobs[2], IMAGE_FEATURE_LENGTHS[2]),
+  ];
+}
+
+function decodeTextFeatures(featureBlob: string, maskBlob: string): TextFeatures {
+  return {
+    features: decodeFloat16(featureBlob, TEXT_TOKENS * TEXT_CHANNELS),
+    mask: decodeBase64(maskBlob, TEXT_TOKENS),
+  };
+}
+
 function makeDecodeBody(
-  imageCacheKey: string,
-  imageBlobs: [string, string, string] | null,
-  textKey: string,
-  textFeatureBlob: string | null,
-  textMaskBlob: string | null,
+  imageFeatures: ImageFeatures,
+  textFeatures: TextFeatures,
   args: InteractorArguments,
   width: number,
   height: number,
@@ -218,11 +261,8 @@ function makeDecodeBody(
   });
 
   return {
-    imageKey: imageCacheKey,
-    imageBlobs,
-    textKey,
-    textFeatureBlob,
-    textMaskBlob,
+    imageFeatures,
+    textFeatures,
     boxes,
     boxValid,
     boxLabels,
@@ -329,26 +369,40 @@ const sam3Plugin: SAM3Plugin = {
               "SAM3 server returned text features for a different prompt",
             );
           }
+          if (serverResult?.image_blobs) {
+            plugin.data.imageEmbeddings.set(
+              currentImageKey,
+              decodeImageFeatures(serverResult.image_blobs),
+            );
+          }
+          if (serverResult?.text) {
+            plugin.data.textEmbeddings.set(
+              currentTextKey,
+              decodeTextFeatures(
+                serverResult.text.feature_blob,
+                serverResult.text.mask_blob,
+              ),
+            );
+          }
+          const imageFeatures = plugin.data.imageEmbeddings.get(currentImageKey);
+          if (!imageFeatures) {
+            throw new Error("SAM3 image features are not cached for this frame");
+          }
+          const textFeatures = plugin.data.textEmbeddings.get(currentTextKey);
+          if (!textFeatures) {
+            throw new Error("SAM3 text features are not cached for this prompt");
+          }
           const item = await sendWorkerRequest<SAM3OutputItem>(
             plugin,
             WorkerAction.DECODE,
             makeDecodeBody(
-              currentImageKey,
-              serverResult?.image_blobs ?? null,
-              currentTextKey,
-              serverResult?.text?.feature_blob ?? null,
-              serverResult?.text?.mask_blob ?? null,
+              imageFeatures,
+              textFeatures,
               args,
               width,
               height,
             ),
           );
-          if (serverResult?.image_blobs) {
-            plugin.data.imageEmbeddings.set(currentImageKey, true);
-          }
-          if (serverResult?.text) {
-            plugin.data.textEmbeddings.set(currentTextKey, true);
-          }
           let rle = plugin.callbacks.mask2Rle!(item.points);
           if (rle.length < 2) {
             rle = [0, 0, 0, 0, 0];

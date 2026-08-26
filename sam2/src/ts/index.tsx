@@ -1,7 +1,9 @@
 import { LRUCache } from "@modules/lru-cache";
 import { type InteractorResults, type Job, type MLModel, ShapeType, Source } from "cvat-core-wrapper";
 import { APIWrapperEnterOptions, ComponentBuilder, PluginEntryPoint } from "components/plugins-entrypoint";
-import { DecodeBody, ExecutionProvider, InitBody, SAM2OutputItem, WorkerAction } from "./inference.worker";
+import { DecodeBody, ExecutionProvider, ImageFeatures, InitBody, SAM2OutputItem, WorkerAction } from "./inference.worker";
+
+const FEATURE_LENGTHS = [32 * 256 * 256, 64 * 128 * 128, 256 * 64 * 64] as const;
 
 type ROI = [number, number, number, number];
 interface Arguments {
@@ -17,7 +19,7 @@ interface Plugin {
   } } };
   data: {
     initialized: boolean; initialization: Promise<void> | null; worker: Worker; jobs: Record<number, Job>;
-    modelID: string; modelURL: string; images: LRUCache<string, true>; nextRequestID: number;
+    modelID: string; modelURL: string; images: LRUCache<string, ImageFeatures>; nextRequestID: number;
     requests: Map<number, { resolve: (payload: any) => void; reject: (error: Error) => void }>;
   };
   callbacks: { mask2Rle: ((points: Uint8ClampedArray) => number[]) | null };
@@ -38,6 +40,32 @@ function executionProvider(): ExecutionProvider {
 function debugEnabled(): boolean {
   return window.localStorage.getItem("cvat.sam2.debug") === "1";
 }
+interface Base64Uint8ArrayConstructor extends Uint8ArrayConstructor {
+  fromBase64?: (value: string) => Uint8Array;
+}
+function decodeBase64(blob: string, expected: number): Uint8Array {
+  const native = (Uint8Array as Base64Uint8ArrayConstructor).fromBase64;
+  let result: Uint8Array;
+  if (native) result = native(blob);
+  else {
+    const binary = atob(blob);
+    result = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) result[index] = binary.charCodeAt(index);
+  }
+  if (result.length !== expected) throw new Error(`Unexpected SAM2 tensor size: ${result.length}`);
+  return result;
+}
+function decodeFeatures(blobs: [string, string, string]): ImageFeatures {
+  function decode(blob: string, length: number): Uint16Array {
+    const bytes = decodeBase64(blob, length * 2);
+    return new Uint16Array(bytes.buffer, bytes.byteOffset, length);
+  }
+  return [
+    decode(blobs[0], FEATURE_LENGTHS[0]),
+    decode(blobs[1], FEATURE_LENGTHS[1]),
+    decode(blobs[2], FEATURE_LENGTHS[2]),
+  ];
+}
 function initialize(plugin: Plugin): Promise<void> {
   if (plugin.data.initialized) return Promise.resolve();
   if (!plugin.data.initialization) {
@@ -53,7 +81,7 @@ function initialize(plugin: Plugin): Promise<void> {
 function normalize(point: number[], roi: ROI | undefined, width: number, height: number): [number, number] {
   return [(point[0] - (roi?.[0] ?? 0)) / width * 1024, (point[1] - (roi?.[1] ?? 0)) / height * 1024];
 }
-function makeBody(imageKey: string, blobs: [string, string, string] | null, args: Arguments, width: number, height: number): DecodeBody {
+function makeBody(imageKey: string, imageFeatures: ImageFeatures, imageFeaturesReceived: boolean, args: Arguments, width: number, height: number): DecodeBody {
   if (args.obj_bbox.length !== 0 && args.obj_bbox.length !== 2) throw new Error("SAM2 requires two corners for one box");
   const count = args.pos_points.length + args.neg_points.length;
   if (!args.obj_bbox.length && !count) throw new Error("SAM2 requires a box or a point prompt");
@@ -68,7 +96,7 @@ function makeBody(imageKey: string, blobs: [string, string, string] | null, args
   }
   const prompts = [...args.pos_points.map((point) => ({ point, label: 1n })), ...args.neg_points.map((point) => ({ point, label: 0n }))];
   prompts.forEach(({ point, label }, index) => { coordinates.set(normalize(point, args.roi, width, height), (index + boxSlots) * 2); labels[index + boxSlots] = label; });
-  return { imageKey, imageBlobs: blobs, coordinates, labels, width, height, debug: debugEnabled() };
+  return { imageKey, imageFeatures, imageFeaturesReceived, coordinates, labels, width, height, debug: debugEnabled() };
 }
 function parse(value: unknown): ServerResult {
   const result = value as Partial<ServerResult> | null;
@@ -99,7 +127,10 @@ const plugin: Plugin = {
         const height = args.roi ? args.roi[3] - args.roi[1] : frame.height;
         const imageKey = key(taskID, args.frame, args.roi);
         const server = result ? parse(result) : null;
-        const body = makeBody(imageKey, server?.image_blobs ?? null, args, width, height);
+        if (server) current.data.images.set(imageKey, decodeFeatures(server.image_blobs));
+        const imageFeatures = current.data.images.get(imageKey);
+        if (!imageFeatures) throw new Error("SAM2 image features are not cached for this frame");
+        const body = makeBody(imageKey, imageFeatures, !!server, args, width, height);
         if (body.debug) {
           console.info("SAM2 browser request", {
             imageKey,
@@ -115,7 +146,6 @@ const plugin: Plugin = {
           });
         }
         const item = await send<SAM2OutputItem>(current, WorkerAction.DECODE, body);
-        if (server) current.data.images.set(imageKey, true);
         let rle = current.callbacks.mask2Rle!(item.points);
         if (rle.length < 2) rle = [0, 0, 0, 0, 0];
         else {

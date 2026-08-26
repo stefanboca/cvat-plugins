@@ -2,9 +2,7 @@ import { InferenceSession, Tensor, env } from "@modules/onnxruntime-web/dist/ort
 
 const FEATURE_SHAPES = [[1, 32, 256, 256], [1, 64, 128, 128], [1, 256, 64, 64]] as const;
 const MASK_SIZE = 256;
-const MAX_CACHED_IMAGES = 2;
 let decoder: InferenceSession | null = null;
-const imageCache = new Map<string, Uint16Array[]>();
 const resizeCache = new Map<number, { lower: Uint16Array; upper: Uint16Array; weight: Float32Array }>();
 env.wasm.wasmPaths = "/assets/";
 
@@ -26,9 +24,11 @@ async function createDecoder(url: string, provider: ExecutionProvider): Promise<
 
 export enum WorkerAction { INIT = "init", DECODE = "decode" }
 export interface InitBody { decoderURL: string; executionProvider: ExecutionProvider }
+export type ImageFeatures = [Uint16Array, Uint16Array, Uint16Array];
 export interface DecodeBody {
   imageKey: string;
-  imageBlobs: [string, string, string] | null;
+  imageFeatures: ImageFeatures;
+  imageFeaturesReceived: boolean;
   coordinates: Float32Array;
   labels: BigInt64Array;
   width: number;
@@ -40,42 +40,6 @@ interface WorkerInput { action: WorkerAction; requestID: number; payload: InitBo
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-interface Base64Uint8ArrayConstructor extends Uint8ArrayConstructor {
-  fromBase64?: (value: string) => Uint8Array;
-}
-
-function decodeBase64(blob: string, expected: number): Uint8Array {
-  const native = (Uint8Array as Base64Uint8ArrayConstructor).fromBase64;
-  if (native) {
-    const result = native(blob);
-    if (result.length !== expected) throw new Error(`Unexpected SAM2 tensor size: ${result.length}`);
-    return result;
-  }
-  const binary = atob(blob);
-  if (binary.length !== expected) throw new Error(`Unexpected SAM2 tensor size: ${binary.length}`);
-  const result = new Uint8Array(expected);
-  for (let index = 0; index < expected; index++) result[index] = binary.charCodeAt(index);
-  return result;
-}
-
-function loadFeatures(key: string, blobs: [string, string, string] | null): Uint16Array[] {
-  if (blobs) {
-    const features = blobs.map((blob, index) => {
-      const length = FEATURE_SHAPES[index].reduce((total, value) => total * value, 1);
-      const bytes = decodeBase64(blob, length * 2);
-      return new Uint16Array(bytes.buffer, bytes.byteOffset, length);
-    });
-    imageCache.delete(key);
-    imageCache.set(key, features);
-    if (imageCache.size > MAX_CACHED_IMAGES) imageCache.delete(imageCache.keys().next().value);
-  }
-  const features = imageCache.get(key);
-  if (!features) throw new Error("SAM2 image features are not cached for this frame");
-  imageCache.delete(key);
-  imageCache.set(key, features);
-  return features;
 }
 
 function axis(size: number): { lower: Uint16Array; upper: Uint16Array; weight: Float32Array } {
@@ -123,12 +87,10 @@ async function decode(body: DecodeBody): Promise<SAM2OutputItem> {
   if (!body.labels.length || body.coordinates.length !== body.labels.length * 2) {
     throw new Error("SAM2 prompt tensors do not match the decoder inputs");
   }
-  const imageFeaturesReceived = body.imageBlobs !== null;
-  const features = loadFeatures(body.imageKey, body.imageBlobs);
   const outputs = await decoder.run({
-    high_res_0: new Tensor("float16", features[0], FEATURE_SHAPES[0]),
-    high_res_1: new Tensor("float16", features[1], FEATURE_SHAPES[1]),
-    image_embed: new Tensor("float16", features[2], FEATURE_SHAPES[2]),
+    high_res_0: new Tensor("float16", body.imageFeatures[0], FEATURE_SHAPES[0]),
+    high_res_1: new Tensor("float16", body.imageFeatures[1], FEATURE_SHAPES[1]),
+    image_embed: new Tensor("float16", body.imageFeatures[2], FEATURE_SHAPES[2]),
     point_coords: new Tensor("float32", body.coordinates, [1, body.labels.length, 2]),
     point_labels: new Tensor("int64", body.labels, [1, body.labels.length]),
   });
@@ -140,7 +102,7 @@ async function decode(body: DecodeBody): Promise<SAM2OutputItem> {
   if (body.debug) {
     console.info("SAM2 worker result", {
       imageKey: body.imageKey,
-      imageFeaturesReceived,
+      imageFeaturesReceived: body.imageFeaturesReceived,
       prompts: Array.from(body.labels, (label, index) => label === -1n ? null : {
         label: Number(label),
         x: body.coordinates[index * 2],

@@ -1,33 +1,24 @@
-# SAM3 serverless function
+# SAM 3 function deployment
 
-## Purpose
-
-This function calculates image features and text features for the SAM3 UI
-plugin. It sends FP16 data to the browser. The browser runs the grounding
-decoder.
-
+Computes image and text features for the browser grounding decoder.
 The function ID is `pth-facebookresearch-sam3`.
 
-## Select a configuration
+## Model and configuration
 
-Use `nuclio/function-gpu.yaml` for an NVIDIA GPU.
+Accept the model license on Hugging Face and download `facebook/sam3`.
+Mount the complete hub cache, including `blobs`, `refs`, and `snapshots`.
 
-Use `nuclio/function-gpu-cu126.yaml` for an NVIDIA GPU that has compute
-capability 5.2. This configuration installs the CUDA 12.6 PyTorch packages.
+| Configuration in `nuclio/` | Runtime |
+| --- | --- |
+| `function-gpu.yaml` | NVIDIA GPU |
+| `function-gpu-cu126.yaml` | CUDA 12.6 packages for compute capability 5.2 |
+| `function.yaml` | CPU |
 
-Use `nuclio/function.yaml` for a CPU-only system. CPU inference is slow. Set
-`CVAT_NUCLIO_DEFAULT_TIMEOUT` to 300 or more if CVAT stops the request before
-the function completes.
+## Deploy
 
-## Prepare the model cache
+Run from the `sam3` directory, replacing the cache path:
 
-The official SAM3 checkpoint is gated. Accept its license on Hugging Face.
-Download `facebook/sam3` to your Hugging Face hub cache. Mount the complete
-hub cache. It must include the `blobs`, `refs`, and `snapshots` directories.
-
-For example:
-
-```console
+```sh
 nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu.yaml \
@@ -36,68 +27,17 @@ nuctl deploy --project-name cvat \
   --env HF_HUB_OFFLINE=1
 ```
 
-## Deploy the GPU function
+Select another YAML file for CPU or CUDA 12.6. With an incomplete cache, allow
+downloads with `--env HF_HUB_OFFLINE=0` and supply an `HF_TOKEN`.
+CPU inference can need `CVAT_NUCLIO_DEFAULT_TIMEOUT=300` or higher in CVAT.
 
-Run this command from the `sam3` directory:
+## GPU selection and caching
 
-```console
-nuctl deploy --project-name cvat \
-  --path serverless/nuclio \
-  --file serverless/nuclio/function-gpu.yaml \
-  --platform local \
-  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
-  --env HF_HUB_OFFLINE=1
-```
+Add `--env CUDA_VISIBLE_DEVICES=0` to select a GPU, or use a UUID from
+`nvidia-smi -L` for stable device selection. The selected GPU appears as
+`cuda:0` inside the container. To restrict container access, change
+`nvidia.com/gpu=all` in `spec.devices` to a device such as `nvidia.com/gpu=0`.
 
-## Deploy the CPU function
-
-Run this command from the `sam3` directory:
-
-```console
-nuctl deploy --project-name cvat \
-  --path serverless/nuclio \
-  --file serverless/nuclio/function.yaml \
-  --platform local \
-  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
-  --env HF_HUB_OFFLINE=1
-```
-
-## Deploy the CUDA 12.6 GPU function
-
-Run this command from the `sam3` directory:
-
-```console
-nuctl deploy --project-name cvat \
-  --path serverless/nuclio \
-  --file serverless/nuclio/function-gpu-cu126.yaml \
-  --platform local \
-  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
-  --env HF_HUB_OFFLINE=1
-```
-
-## Select a GPU
-
-Set `CUDA_VISIBLE_DEVICES` during deployment. The GPU YAML makes all GPUs
-available to the container. Add `--env CUDA_VISIBLE_DEVICES=0` to use physical
-GPU 0. Add `--env CUDA_VISIBLE_DEVICES=1` to use physical GPU 1.
-
-Use a GPU UUID for a stable selection. Run `nvidia-smi -L` to get the UUID.
-The selected physical GPU is `cuda:0` inside the container.
-
-For container-level isolation, change `nvidia.com/gpu=all` in `spec.devices`
-to a device such as `nvidia.com/gpu=0`. Do not set this field to `all` if the
-container must not have access to the other GPUs.
-
-The supplied YAML sets `HF_HUB_OFFLINE=1`. This setting prevents network
-requests. If the cache is incomplete, deploy with `--env HF_HUB_OFFLINE=0`
-and give the function an `HF_TOKEN`.
-
-## Cache operation
-
-The browser has separate caches for image features and text features. Each
-request identifies the feature that is not in a cache. The function calculates
-only that feature.
-
-CVAT always includes an image in an interactor request. For a text-only
-request, the function does not decode the image. It does not run the image
-encoder.
+The browser caches image and text features separately. The function computes
+only features missing from those caches; text-only requests skip image
+decoding and the image encoder.

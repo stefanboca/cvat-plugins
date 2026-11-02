@@ -1,75 +1,44 @@
-# SAM2 plugin for CVAT
+# SAM 2.1 with browser decoding
 
-## Purpose
+Interactive segmentation in CVAT using `facebook/sam2.1-hiera-large`. A Nuclio
+function computes image features, and the browser runs the decoder with ONNX
+Runtime Web. WebGPU is preferred, with WebAssembly as a fallback.
 
-This plugin adds SAM2.1 interactive segmentation to the CVAT user interface.
-The Nuclio function calculates image features. The browser runs the decoder
-with ONNX Runtime Web. WebGPU is the first execution provider. WebAssembly is
-the fallback provider.
+## Setup
 
-To test the WebAssembly decoder, run this command in the browser console and
-reload CVAT:
+Run commands from the repository root unless noted otherwise.
 
-```javascript
-localStorage.setItem("cvat.sam2.executionProvider", "wasm");
-```
+1. Export the decoder from the checkpoint:
 
-Set the value to `webgpu` to require WebGPU. Remove the setting to restore the
-automatic selection:
+   ```sh
+   SAM2_BUILD_CUDA=0 uv run sam2/scripts/export_decoder_onnx.py \
+     --checkpoint /path/to/sam2.1_hiera_large.pt
+   ```
 
-```javascript
-localStorage.removeItem("cvat.sam2.executionProvider");
-```
+   This writes `sam2/assets/sam2_decoder.onnx` and checks its output against
+   PyTorch, including different prompt counts and coordinates.
 
-To log the prompts and decoder results, run these commands and reload CVAT:
+2. [Deploy the matching Nuclio function](serverless/README.md).
+3. Build CVAT with this plugin, running from the CVAT checkout:
 
-```javascript
-localStorage.setItem("cvat.sam2.debug", "1");
-location.reload();
-```
+   ```sh
+   CLIENT_PLUGINS=/absolute/path/to/cvat-plugins/sam2 \
+   CVAT_UI_ROOT=/absolute/path/to/cvat/cvat-ui \
+   yarn workspace cvat-ui run build
+   ```
 
-Remove the setting after the test:
+The build copies the decoder into CVAT's assets. The server encoder and
+browser decoder must use the same checkpoint.
 
-```javascript
-localStorage.removeItem("cvat.sam2.debug");
-```
+## Development
 
-The plugin uses `facebook/sam2.1-hiera-large`. The browser decoder sends only
-the prompt tokens that the user supplies. It does not set a point limit.
+Type-check from the plugin repository after installing CVAT's dependencies:
 
-## Build the UI
-
-Set `CVAT_UI_ROOT` to the `cvat-ui` directory. Add this directory to
-`CLIENT_PLUGINS`:
-
-```console
-CLIENT_PLUGINS=/path/to/cvat-plugins/sam2 \
-CVAT_UI_ROOT=/path/to/cvat/cvat-ui \
-yarn build
-```
-
-The prepare script copies `assets/sam2_decoder.onnx` to the CVAT asset
-directory before webpack starts.
-
-## Check the TypeScript files
-
-```console
+```sh
 CVAT_UI_ROOT=/path/to/cvat/cvat-ui node sam2/scripts/typecheck.cjs
 ```
 
-## Export the decoder
-
-Run this command from the repository root:
-
-```console
-SAM2_BUILD_CUDA=0 uv run sam2/scripts/export_decoder_onnx.py \
-  --checkpoint /path/to/sam2.1_hiera_large.pt
-```
-
-The exporter writes `sam2/assets/sam2_decoder.onnx`. It compares the ONNX
-output with the PyTorch output. It also checks a different prompt count and
-different prompt coordinates.
-
-## Deploy the function
-
-Read `serverless/README.md`.
+Set `localStorage["cvat.sam2.executionProvider"]` to `"wasm"` or `"webgpu"`
+in the browser console, then reload, to select a decoder backend. Remove the
+key to restore automatic selection. Set `localStorage["cvat.sam2.debug"]`
+to `"1"` to log prompts and results.

@@ -1,12 +1,11 @@
-# Server-side SAM2 plugin for CVAT
+# SAM 2.1 with server-side inference
 
-## Purpose
+Runs the image encoder and mask decoder on the server using
+`facebook/sam2.1-hiera-large`. The function caches image features and returns
+an RLE mask to CVAT. It uses the supplied points without padding.
 
-This directory contains a full server-side SAM2.1 interactor. The Nuclio
-function runs the image encoder and the mask decoder. CVAT uses the function
-as a normal dashboard interactor. No custom CVAT UI bundle is necessary.
+This works as a standard CVAT dashboard interactor; no custom UI build is
+needed. The function ID is `pth-facebookresearch-sam2-server`.
 
-The function uses `facebook/sam2.1-hiera-large`. It uses the exact number
-of supplied points. It does not add point slots or padding.
-
-Read `serverless/README.md` for deployment instructions.
+See [deployment instructions](serverless/README.md) for model caching, CPU
+and GPU configurations, and cache settings.

@@ -1,51 +1,27 @@
-# CVAT plugins
+# CVAT segmentation plugins
 
-This repository contains external user-interface plugins for CVAT.
+SAM 2.1 and SAM 3 integrations for interactive image annotation in CVAT. They
+let users guide segmentation with points and, for SAM 3, text and boxes.
 
-## Available plugins
+The repository contains CVAT UI plugins, model-export tools, and Nuclio
+functions for serving the models. Each model has a browser-decoder variant
+and a version that runs inference entirely on the server.
 
-### SAM3
+| Model | Browser decoder | Server-side inference |
+| --- | --- | --- |
+| SAM 2.1 | [sam2](sam2/README.md) | [sam2-server](sam2-server/README.md) |
+| SAM 3 | [sam3](sam3/README.md) | [sam3-server](sam3-server/README.md) |
 
-The `sam3` directory contains a SAM3 interactive segmentation plugin. The
-plugin uses a serverless image and text encoder. It runs the grounding decoder
-in the browser.
+## Build a UI plugin
 
-Read `sam3/README.md` for the plugin operation and the server requirements.
+From the CVAT checkout, after preparing the model as described in the linked
+plugin guide:
 
-### Server-side SAM3
-
-The `sam3-server` directory contains a SAM3 interactive segmentation plugin.
-The serverless function runs the image encoder, the text encoder, and the
-grounding decoder. Use this plugin to compare server-side inference with the
-browser decoder in the `sam3` plugin.
-
-Read `sam3-server/README.md` for the plugin operation and the server
-requirements.
-
-### SAM2
-
-The `sam2` directory contains a SAM2.1 interactive segmentation plugin. A
-Nuclio function calculates image features. The browser runs the decoder.
-
-Read `sam2/README.md` for setup instructions.
-
-### Server-side SAM2
-
-The `sam2-server` directory contains a full server-side SAM2.1 function. It
-caches image features and returns masks to CVAT.
-
-Read `sam2-server/README.md` for setup instructions.
-
-## Build CVAT with plugins
-
-`CLIENT_PLUGINS` is a build-time variable. Use an absolute path because this
-repository is outside the CVAT source tree. Separate multiple paths with a
-colon.
-
-```console
-CLIENT_PLUGINS=/absolute/path/to/plugin-a:/absolute/path/to/plugin-b \
+```sh
+CLIENT_PLUGINS=/absolute/path/to/cvat-plugins/sam3 \
+CVAT_UI_ROOT=/absolute/path/to/cvat/cvat-ui \
 yarn workspace cvat-ui run build
 ```
 
-Read the README file for each plugin before you build it. A plugin can require
-more variables or preparation steps.
+The plugin guides cover model preparation and deployment. The server-side
+SAM 2 function works with CVAT's standard interactor interface.

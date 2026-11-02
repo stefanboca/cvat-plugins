@@ -1,19 +1,24 @@
-# Server-side SAM2 serverless function
+# SAM 2.1 function deployment
 
-## Purpose
+Runs all inference on the server and returns an RLE mask to CVAT.
+The function ID is `pth-facebookresearch-sam2-server`.
 
-This function runs all SAM2.1 inference on the server. It returns an RLE mask
-to CVAT. The function ID is `pth-facebookresearch-sam2-server`.
+## Model and configuration
 
-The function has a per-worker image feature cache. The default cache size is
-two images. Set `SAM2_IMAGE_CACHE_SIZE` during deployment to change the size.
-A larger cache uses more GPU or system memory.
+Download `facebook/sam2.1-hiera-large` to your Hugging Face cache.
+Mount the complete hub cache, including `blobs`, `refs`, and `snapshots`.
 
-## Deploy the GPU function
+| Configuration in `nuclio/` | Runtime |
+| --- | --- |
+| `function-gpu.yaml` | NVIDIA GPU |
+| `function-gpu-cu126.yaml` | CUDA 12.6 packages for compute capability 5.2 |
+| `function.yaml` | CPU |
 
-Run this command from the `sam2-server` directory:
+## Deploy
 
-```console
+Run from the `sam2-server` directory, replacing the cache path:
+
+```sh
 nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu.yaml \
@@ -22,42 +27,16 @@ nuctl deploy --project-name cvat \
   --env HF_HUB_OFFLINE=1
 ```
 
-Use `function-gpu-cu126.yaml` for a compute capability 5.2 GPU. Use
-`function.yaml` for a CPU.
+Select another YAML file for CPU or CUDA 12.6. With an incomplete cache, allow
+downloads with `--env HF_HUB_OFFLINE=0`.
 
-## Select a GPU
+## GPU selection and caching
 
-Set `CUDA_VISIBLE_DEVICES` during deployment. The GPU YAML makes all GPUs
-available to each container. This variable tells CUDA which GPU to use. For
-example, set the browser function to GPU 0 and this function to GPU 1:
+Add `--env CUDA_VISIBLE_DEVICES=0` to select a GPU, or use a UUID from
+`nvidia-smi -L` for stable device selection. The selected GPU appears as
+`cuda:0` inside the container. To restrict container access, change
+`nvidia.com/gpu=all` in `spec.devices` to a device such as `nvidia.com/gpu=0`.
 
-```console
-# Run this command from the sam2 directory.
-nuctl deploy --project-name cvat --path serverless/nuclio \
-  --file serverless/nuclio/function-gpu-cu126.yaml --platform local \
-  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
-  --env HF_HUB_OFFLINE=1 \
-  --env CUDA_VISIBLE_DEVICES=0
-
-# Run this command from the sam2-server directory.
-nuctl deploy --project-name cvat --path serverless/nuclio \
-  --file serverless/nuclio/function-gpu-cu126.yaml --platform local \
-  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
-  --env HF_HUB_OFFLINE=1 \
-  --env CUDA_VISIBLE_DEVICES=1
-```
-
-Use GPU UUIDs instead of indices if the device order can change. Run
-`nvidia-smi -L` to get the UUIDs. Each selected physical GPU is `cuda:0`
-inside its container.
-
-For container-level isolation, change `nvidia.com/gpu=all` in each file's
-`spec.devices` field to a device such as `nvidia.com/gpu=0` or
-`nvidia.com/gpu=1`.
-
-The supplied YAML sets `HF_HUB_OFFLINE=1`. This setting prevents network
-requests. If the cache is incomplete, deploy with `--env HF_HUB_OFFLINE=0`.
-
-The function calls
-`SAM2ImagePredictor.from_pretrained("facebook/sam2.1-hiera-large")`. It then
-moves the model to the selected device.
+The default image cache holds two entries per worker. Set
+`SAM2_IMAGE_CACHE_SIZE` at deployment to change it. Larger caches use more
+device memory.

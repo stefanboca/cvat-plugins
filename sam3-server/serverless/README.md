@@ -1,45 +1,24 @@
-# Server-side SAM3 serverless function
+# SAM 3 function deployment
 
-## Purpose
-
-This function runs all SAM3 inference on the server. The function returns an
-RLE mask to CVAT.
-
+Runs all inference on the server and returns an RLE mask to CVAT.
 The function ID is `pth-facebookresearch-sam3-server`.
 
-## Select a configuration
+## Model and configuration
 
-Use `nuclio/function-gpu.yaml` for an NVIDIA GPU.
+Accept the model license on Hugging Face and download `facebook/sam3`.
+Mount the complete hub cache, including `blobs`, `refs`, and `snapshots`.
 
-Use `nuclio/function-gpu-cu126.yaml` for an NVIDIA GPU that has compute
-capability 5.2. This configuration installs the CUDA 12.6 PyTorch packages.
+| Configuration in `nuclio/` | Runtime |
+| --- | --- |
+| `function-gpu.yaml` | NVIDIA GPU |
+| `function-gpu-cu126.yaml` | CUDA 12.6 packages for compute capability 5.2 |
+| `function.yaml` | CPU |
 
-Use `nuclio/function.yaml` for a CPU-only system. CPU inference is slow. Set
-`CVAT_NUCLIO_DEFAULT_TIMEOUT` to 300 or more if CVAT stops the request before
-the function completes.
+## Deploy
 
-## Prepare the model cache
+Run from the `sam3-server` directory, replacing the cache path:
 
-The official SAM3 checkpoint is gated. Accept its license on Hugging Face.
-Download `facebook/sam3` to your Hugging Face hub cache. Mount the complete
-hub cache. It must include the `blobs`, `refs`, and `snapshots` directories.
-
-For example:
-
-```console
-nuctl deploy --project-name cvat \
-  --path serverless/nuclio \
-  --file serverless/nuclio/function-gpu-cu126.yaml \
-  --platform local \
-  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub \
-  --env HF_HUB_OFFLINE=1
-```
-
-## Deploy the GPU function
-
-Run this command from the `sam3-server` directory:
-
-```console
+```sh
 nuctl deploy --project-name cvat \
   --path serverless/nuclio \
   --file serverless/nuclio/function-gpu.yaml \
@@ -48,49 +27,19 @@ nuctl deploy --project-name cvat \
   --env HF_HUB_OFFLINE=1
 ```
 
-## Set the cache sizes
+Select another YAML file for CPU or CUDA 12.6. With an incomplete cache, allow
+downloads with `--env HF_HUB_OFFLINE=0` and supply an `HF_TOKEN`.
+CPU inference can need `CVAT_NUCLIO_DEFAULT_TIMEOUT=300` or higher in CVAT.
 
-The default image cache size is two. The default text cache size is 32. Set
-the sizes during deployment if you need different limits:
+## GPU selection and caching
 
-```console
-nuctl deploy --project-name cvat \
-  --path serverless/nuclio \
-  --file serverless/nuclio/function-gpu.yaml \
-  --platform local \
-  --env SAM3_IMAGE_CACHE_SIZE=1 \
-  --env SAM3_TEXT_CACHE_SIZE=16 \
-  --volume /absolute/host/HF_HUB_CACHE:/opt/nuclio/huggingface/hub
-```
+Add `--env CUDA_VISIBLE_DEVICES=0` to select a GPU, or use a UUID from
+`nvidia-smi -L` for stable device selection. The selected GPU appears as
+`cuda:0` inside the container. To restrict container access, change
+`nvidia.com/gpu=all` in `spec.devices` to a device such as `nvidia.com/gpu=0`.
 
-The image cache stores feature tensors on the inference device. A larger image
-cache uses more GPU or system memory. The text features are smaller than the
-image features.
-
-Each function worker has separate caches. The supplied configurations use one
-worker. A function restart clears both caches.
-
-## Select a GPU
-
-Set `CUDA_VISIBLE_DEVICES` during deployment. The GPU YAML makes all GPUs
-available to the container. Add `--env CUDA_VISIBLE_DEVICES=1` to use physical
-GPU 1. You can deploy the browser-decoder function with
-`--env CUDA_VISIBLE_DEVICES=0` to put the two functions on different GPUs.
-
-Use a GPU UUID for a stable selection. Run `nvidia-smi -L` to get the UUID.
-The selected physical GPU is `cuda:0` inside the container.
-
-For container-level isolation, change `nvidia.com/gpu=all` in each file's
-`spec.devices` field to a device such as `nvidia.com/gpu=0` or
-`nvidia.com/gpu=1`.
-
-The supplied YAML sets `HF_HUB_OFFLINE=1`. This setting prevents network
-requests. If the cache is incomplete, deploy with `--env HF_HUB_OFFLINE=0`
-and give the function an `HF_TOKEN`.
-
-## Cache keys
-
-The CVAT server does not send task, job, frame, or ROI identifiers to an
-interactor function. The function uses a SHA-256 digest of the image payload
-as the image cache key. The function uses the normalized text prompt as the
-text cache key.
+Each worker caches two images and 32 text prompts by default. Set
+`SAM3_IMAGE_CACHE_SIZE` and `SAM3_TEXT_CACHE_SIZE` at deployment to change
+these limits. Caches are cleared on restart; additional workers have separate
+caches. Image keys use a SHA-256 digest of the payload, and text keys use the
+normalized prompt.
